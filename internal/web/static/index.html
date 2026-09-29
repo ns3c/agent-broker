@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Credential Broker</title>
+<style>
+:root {
+  --bg: #f5f4f0; --panel: #ffffff; --sunken: #f7f6f2; --ink: #1d1d1b; --muted: #6b6b66; --faint: #9a9993; --line: #e4e2dc;
+  --ok: #1f7a4d; --ok-bg: #e5f3ea; --deny: #b42318; --deny-bg: #fbe9e7;
+  --warn: #8a5d00; --warn-bg: #fdf3d8; --accent: #c15f3c; --accent-bg: #fbeee8; --chip: #efeee9;
+  --c-user: #2f6fd1; --c-harness: #7a4fc9; --c-grants: #16806f; --c-broker: #c15f3c; --c-system: #6b6b66;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141413; --panel: #1d1d1b; --sunken: #181817; --ink: #ecebe6; --muted: #a09f98; --faint: #74736d; --line: #302f2b;
+    --ok: #5cc98f; --ok-bg: #16301f; --deny: #f2877b; --deny-bg: #3a1c19;
+    --warn: #e6b94f; --warn-bg: #352b12; --accent: #e08a67; --accent-bg: #36231b; --chip: #292926;
+    --c-user: #7aa7f0; --c-harness: #b192ee; --c-grants: #5cc7b4; --c-broker: #e08a67; --c-system: #a09f98;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); display: flex; flex-direction: column; }
+code, .mono { font-family: var(--mono); font-size: 12px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+.muted { color: var(--muted); }
+
+/* ---- header ---- */
+header { background: var(--panel); border-bottom: 1px solid var(--line); padding: 16px 24px 0; }
+.titlebar { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h1 { margin: 0; font-size: 17px; letter-spacing: -.01em; }
+.thesis { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.thesis b { color: var(--ink); font-weight: 600; }
+.titlebar .spacer { flex: 1; }
+.quota { font-size: 12px; color: var(--muted); }
+.btn { border: 1px solid var(--line); background: var(--panel); padding: 4px 10px; border-radius: 6px; font-size: 13px; }
+.btn:hover { border-color: var(--muted); }
+
+.scenarios { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.scn { text-align: left; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 8px 12px; transition: border-color .12s, background .12s; }
+.scn b { display: block; font-size: 13px; }
+.scn span { display: block; font-size: 12px; color: var(--muted); }
+.scn:hover:not(:disabled) { border-color: var(--accent); }
+.scn.active { border-color: var(--accent); background: var(--accent-bg); }
+.scn:disabled { cursor: default; }
+.scn:disabled:not(.active) { opacity: .5; }
+.err { color: var(--deny); font-size: 13px; margin-top: 8px; }
+
+.runbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; padding: 12px 0; font-size: 12px; color: var(--muted); min-height: 46px; }
+.runbar .kv { display: inline-flex; gap: 6px; align-items: center; }
+.runbar code { color: var(--ink); }
+.runbar .desc { flex-basis: 100%; font-size: 13px; color: var(--ink); }
+.stat { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; padding: 2px 9px; border-radius: 999px; background: var(--chip); color: var(--ink); }
+.stat.ok { background: var(--ok-bg); color: var(--ok); }
+.stat.deny { background: var(--deny-bg); color: var(--deny); }
+.stat.warn { background: var(--warn-bg); color: var(--warn); }
+.runbar .stats { display: inline-flex; gap: 6px; margin-left: auto; }
+
+nav { display: flex; gap: 4px; margin: 0 -12px; }
+nav button { border: 0; border-bottom: 2px solid transparent; background: none; padding: 8px 12px; color: var(--muted); }
+nav button.active { border-bottom-color: var(--accent); color: var(--ink); font-weight: 600; }
+
+/* ---- layout ---- */
+main { flex: 1; min-height: 0; padding: 16px 24px 20px; display: flex; flex-direction: column; }
+.grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.panel > h2 { margin: 0; padding: 10px 16px; font-size: 13px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.panel > h2 .muted { font-weight: 400; }
+.panel > h2 .right { margin-left: auto; display: inline-flex; gap: 4px; align-items: center; }
+.panel > .body { flex: 1; min-height: 0; overflow: auto; padding: 16px; }
+#tab-jira { flex: 1; min-height: 0; display: flex; }
+#tab-jira .panel { flex: 1; }
+@media (max-width: 1000px) {
+  body { height: auto; display: block; }
+  header, main { padding-left: 16px; padding-right: 16px; }
+  .scenarios { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid { grid-template-columns: 1fr; }
+  .panel > .body { max-height: 75vh; }
+  .runbar .stats { margin-left: 0; }
+}
+.empty { color: var(--muted); padding: 32px 0; text-align: center; }
+
+/* ---- component chips (also the legend) ---- */
+.comp { --c: var(--muted); display: inline-block; font: 500 11px/18px var(--mono); padding: 0 7px; border-radius: 4px;
+        color: var(--c); background: color-mix(in srgb, var(--c) 12%, transparent); border: 1px solid color-mix(in srgb, var(--c) 28%, transparent); }
+.comp.user { --c: var(--c-user); } .comp.harness { --c: var(--c-harness); } .comp.grants { --c: var(--c-grants); } .comp.broker { --c: var(--c-broker); }
+.scan { font-size: 12px; font-weight: 500; padding: 1px 9px; border-radius: 999px; }
+.scan.clean { background: var(--ok-bg); color: var(--ok); }
+.scan.dirty { background: var(--deny-bg); color: var(--deny); }
+
+/* ---- model context: one card per turn ---- */
+.turn { --c: var(--c-system); border: 1px solid var(--line); border-left: 3px solid var(--c); border-radius: 8px; background: var(--panel); margin-bottom: 14px; overflow: hidden; }
+.turn.user { --c: var(--c-user); }
+.turn.assistant { --c: var(--accent); }
+.turn > .hd { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--line); background: var(--sunken); border-radius: 0 7px 0 0; font-size: 12px; }
+.turn > .hd .role { font-weight: 700; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--c); }
+.turn > .hd .meta { color: var(--muted); }
+.turn > .bd { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.prose { white-space: pre-wrap; word-break: break-word; margin: 0; }
+.prose code { background: var(--chip); padding: 0 4px; border-radius: 3px; }
+pre { font-family: var(--mono); font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; margin: 0; }
+pre.code { background: var(--sunken); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; max-height: 420px; overflow: auto; }
+details > summary { cursor: pointer; color: var(--muted); font-size: 13px; list-style: none; display: flex; gap: 6px; align-items: center; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary::before { content: "▸"; font-size: 10px; width: 10px; transition: transform .12s; }
+details[open] > summary::before { transform: rotate(90deg); }
+details[open] > summary { margin-bottom: 8px; }
+.files { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.files code { background: var(--chip); padding: 0 6px; border-radius: 4px; color: var(--ink); }
+.inject { background: var(--warn-bg); color: var(--warn); border-radius: 3px; outline: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); }
+.inject-note { font-size: 12px; color: var(--warn); }
+
+/* tool calls & results */
+.call { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; background: var(--panel); transition: box-shadow .12s, border-color .12s; }
+.call .top { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.call .title { font-weight: 600; margin-top: 4px; }
+.call .text { margin-top: 4px; color: var(--muted); font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+.call .text.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.call .more { border: 0; background: none; padding: 0; margin-top: 2px; font-size: 12px; color: var(--accent); }
+.call.res-ok { border-left: 3px solid var(--ok); }
+.call.res-deny { border-left: 3px solid var(--deny); background: var(--deny-bg); }
+.call.res-deny .text { color: var(--deny); }
+.call.res-ok .text { color: var(--ink); }
+.num { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--ink); color: var(--panel); font: 600 11px/1 var(--sans); cursor: pointer; }
+.hl { border-color: var(--accent) !important; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+
+/* ---- decision log: grouped by tool call ---- */
+.group { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-bottom: 14px; transition: box-shadow .12s, border-color .12s; }
+.group > .hd { display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--sunken); border-bottom: 1px solid var(--line); border-radius: 8px 8px 0 0; font-size: 13px; }
+.group > .hd .name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group > .hd .kind { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.group > .hd time { margin-left: auto; }
+.ev { display: grid; grid-template-columns: 52px 66px minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px 12px; border-top: 1px solid var(--line); }
+.group > .hd + .ev { border-top: 0; }
+time { font: 12px/18px var(--mono); color: var(--faint); text-align: right; }
+.ev .comp { text-align: center; }
+.ev .sum { min-width: 0; word-break: break-word; }
+.ev.ok .sum .icon { color: var(--ok); }
+.ev.deny { background: var(--deny-bg); }
+.ev.deny .sum { color: var(--deny); font-weight: 500; }
+.ev.error .sum { color: var(--warn); }
+.ev.info .sum { color: var(--muted); }
+.ev.injected { background: var(--warn-bg); }
+.ev.injected .sum { color: var(--warn); font-weight: 500; }
+.tag { display: inline-block; font-size: 11px; font-weight: 500; padding: 0 7px; border-radius: 999px; margin-left: 4px; vertical-align: 1px; }
+.tag.warn { background: var(--warn-bg); color: var(--warn); outline: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); }
+.tag.scn { background: var(--warn); color: var(--panel); }
+.checks { margin-top: 4px; }
+.checks > summary { font-size: 12px; }
+.checks ul { list-style: none; margin: 0; padding: 0; font: 12px/1.7 var(--mono); color: var(--muted); }
+.checks .v { color: var(--ok); } .checks .x { color: var(--deny); font-weight: 600; }
+
+/* ---- jira ---- */
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--muted); font-weight: 500; }
+td pre { margin-top: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="titlebar">
+    <h1>Agent Credential Broker</h1>
+    <span class="spacer"></span>
+    <span class="quota" id="runsLeft"></span>
+    <button class="btn" id="reset">Reset</button>
+  </div>
+  <p class="thesis"><b>The model emits intent. The harness owns credentials. The broker enforces policy.</b>
+    A Claude code reviewer files Jira tickets without ever holding a credential.</p>
+  <div class="scenarios">
+    <button class="scn" data-s="normal"><b>Normal</b><span>Token refreshes silently</span></button>
+    <button class="scn" data-s="expire"><b>Grant expires</b><span>Expires mid-run</span></button>
+    <button class="scn" data-s="revoke"><b>Grant revoked</b><span>User revokes mid-run</span></button>
+    <button class="scn" data-s="stolen"><b>Stolen token</b><span>Another workload replays it</span></button>
+  </div>
+  <div class="err" id="err" hidden></div>
+  <div class="runbar" id="runbar"><span class="desc muted">Pick a scenario. Each one starts a fresh agent run with its own workload identity.</span></div>
+  <nav>
+    <button class="active" data-tab="run">Run</button>
+    <button data-tab="jira">Jira <span id="jiraCount" class="muted"></span></button>
+  </nav>
+</header>
+<main>
+  <section id="tab-run" class="grid">
+    <div class="panel">
+      <h2>Model context <span class="muted">exactly what is sent to Claude</span><span class="right" id="scan"></span></h2>
+      <div class="body" id="context"><div class="empty">No run yet.</div></div>
+    </div>
+    <div class="panel">
+      <h2>Decision log <span class="muted">what the system enforced</span>
+        <span class="right"><span class="comp user">user</span><span class="comp harness">harness</span><span class="comp grants">grants</span><span class="comp broker">broker</span></span></h2>
+      <div class="body" id="log"><div class="empty">No events yet.</div></div>
+    </div>
+  </section>
+  <section id="tab-jira" hidden>
+    <div class="panel">
+      <h2>ENG project <span class="muted">mock Jira; only the broker holds its API key</span></h2>
+      <div class="body" id="jira"></div>
+    </div>
+  </section>
+</main>
+<script>
+const DESC = {
+  normal: "The agent reviews a toy repo and files tickets. The harness refreshes its 10-second access token silently; the model never knows.",
+  expire: "The grant is set to expire 6s after the first ticket. The next token refresh is denied, and the model is told only “Grant no longer available.”",
+  revoke: "The user revokes the grant right after the first ticket. The already-issued token stays valid until it expires (at most 10s); revocation is enforced at the next token exchange, which is denied.",
+  stolen: "After the first ticket, a second workload replays this run's access token and delegation ID. Both are rejected: they are bound to this run's identity.",
+};
+// Events the scenario injects into the run (the "thing that happens").
+const INJECTED = new Set(["user.revoke", "user.expiry", "scenario"]);
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const hms = (t) => new Date(t).toLocaleTimeString([], { hour12: false });
+// Minimal, escape-first markdown: `code` and **bold** only.
+const md = (s) => esc(s).replace(/`([^`\n]+)`/g, "<code>$1</code>").replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+let state = null, lastCtx = "", lastLog = "";
+
+document.querySelectorAll("[data-s]").forEach((b) => { b.onclick = () => start(b.dataset.s); b.title = DESC[b.dataset.s]; });
+$("reset").onclick = async () => { await fetch("/api/reset", { method: "POST" }); lastCtx = lastLog = ""; poll(); };
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("active", x === b));
+  $("tab-run").hidden = b.dataset.tab !== "run";
+  $("tab-jira").hidden = b.dataset.tab !== "jira";
+});
+
+async function start(s) {
+  $("err").hidden = true;
+  const r = await fetch("/api/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scenario: s }) });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); $("err").textContent = e.detail || e.error || "failed to start"; $("err").hidden = false; }
+  lastCtx = lastLog = "";
+  poll();
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/api/state");
+    state = await r.json();
+    render();
+  } catch (e) { /* keep polling */ }
+}
+setInterval(poll, 1000);
+poll();
+
+function render() {
+  const run = state.run;
+  const evs = state.events || [];
+  const busy = run && (run.status === "starting" || run.status === "running");
+  document.querySelectorAll("[data-s]").forEach((b) => { b.disabled = busy; b.classList.toggle("active", !!run && run.scenario === b.dataset.s); });
+  $("runsLeft").textContent = `${state.runs_left} runs left this hour`;
+  renderRunbar(run, evs);
+  renderContext(state.model_context, run);
+  renderLog(evs, run);
+  renderJira(state.tickets || []);
+}
+
+function renderRunbar(run, evs) {
+  if (!run) return;
+  const exp = run.delegation_expires_at ? Math.round((new Date(run.delegation_expires_at) - Date.now()) / 1000) : null;
+  const filed = evs.filter((e) => e.type === "ticket.created").length;
+  const denied = evs.filter((e) => e.result === "deny" && (e.component === "broker" || e.component === "grants")).length;
+  const cls = { completed: "ok", running: "warn", starting: "warn", failed: "deny", cancelled: "deny" }[run.status] || "";
+  $("runbar").innerHTML = `
+    <span class="desc">${esc(DESC[run.scenario])}</span>
+    <span class="stat ${cls}">${esc(run.status)}</span>
+    <span class="kv">run <code>${esc(run.id)}</code></span>
+    <span class="kv">identity <code>${esc(run.spiffe_id || "…")}</code></span>
+    <span class="kv">delegation <code>${esc(run.delegation_id || "…")}</code>${exp !== null ? `<span>${exp > 0 ? "expires in " + exp + "s" : "expired"}</span>` : ""}${run.revoked_at ? `<span class="tag warn">revoked</span>` : ""}</span>
+    <span class="stats">
+      <span class="stat ${filed ? "ok" : ""}">${filed} ticket${filed === 1 ? "" : "s"} filed</span>
+      <span class="stat ${denied ? "deny" : ""}">${denied} request${denied === 1 ? "" : "s"} denied</span>
+    </span>`;
+}
+
+// Keep expanded <details>/bodies open across re-renders.
+function keepOpen(el, fn) {
+  const open = new Set([...el.querySelectorAll("[data-k].open, details[data-k][open]")].map((x) => x.dataset.k));
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 30;
+  fn();
+  el.querySelectorAll("[data-k]").forEach((x) => { if (open.has(x.dataset.k)) x.tagName === "DETAILS" ? x.open = true : expand(x); });
+  if (atBottom) el.scrollTop = el.scrollHeight;
+}
+
+// Hover a numbered call on either side to highlight its counterpart.
+function link(el) {
+  el.querySelectorAll("[data-call]").forEach((x) => {
+    const n = x.dataset.call, all = () => document.querySelectorAll(`[data-call="${n}"]`);
+    x.onmouseenter = () => all().forEach((y) => y.classList.add("hl"));
+    x.onmouseleave = () => all().forEach((y) => y.classList.remove("hl"));
+  });
+  el.querySelectorAll(".num").forEach((x) => x.onclick = (e) => {
+    e.stopPropagation();
+    const other = [...document.querySelectorAll(`[data-call="${x.closest("[data-call]").dataset.call}"]`)].find((y) => !el.contains(y));
+    other && other.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+}
+
+function expand(x) { x.classList.add("open"); x.querySelector(".text")?.classList.remove("clamp"); x.querySelector(".more")?.remove(); }
+
+// Anything shaped like a credential from this system.
+const CRED_PATTERNS = [/eyJ[\w-]+\.[\w-]+\.[\w-]+/, /dlg_[0-9a-f]+/, /spiffe:\/\//, /PRIVATE KEY/, /jira_[0-9a-f]{8,}/];
+const INJECTION = /^.*AI reviewers?:.*$/im;
+
+function renderContext(ctx, run) {
+  const key = JSON.stringify(ctx);
+  if (key === lastCtx) return;
+  lastCtx = key;
+  if (!ctx) { $("context").innerHTML = `<div class="empty">No run yet.</div>`; $("scan").innerHTML = ""; return; }
+  let visible = "";
+  const parts = [];
+  const turn = (cls, role, meta, body) =>
+    `<div class="turn ${cls}"><div class="hd"><span class="role">${role}</span>${meta.map((m) => `<span class="meta">${m}</span>`).join("")}</div><div class="bd">${body}</div></div>`;
+
+  const sys = (ctx.system || []).map((b) => b.text).join("\n");
+  visible += sys;
+  const tools = JSON.stringify(ctx.tools, null, 2);
+  visible += tools;
+  parts.push(turn("system", "System", [esc(ctx.model || "")],
+    `<p class="prose">${md(sys)}</p>
+     <details data-k="tools"><summary>Tools: ${(ctx.tools || []).map((t) => `<code>${esc(t.name)}</code>`).join(", ")}</summary><pre class="code">${esc(tools)}</pre></details>`));
+
+  const callNum = {}; // tool_use_id -> call number, matching the harness's model.intent events
+  let n = 0;
+  for (const [i, m] of (ctx.messages || []).entries()) {
+    const content = typeof m.content === "string" ? [{ type: "text", text: m.content }] : m.content;
+    const blocks = content.map((b, j) => {
+      const k = `${i}.${j}`;
+      if (b.type === "text") {
+        visible += b.text;
+        if (m.role === "user" && b.text.includes("<file path=")) {
+          const files = (b.text.match(/<file path="([^"]+)"/g) || []).map((f) => f.slice(12, -1));
+          const inj = b.text.match(INJECTION);
+          const lead = b.text.slice(0, b.text.indexOf("<file path=")).trim();
+          const hi = esc(b.text).replace(INJECTION, (l) => `<mark class="inject">${l}</mark>`);
+          return `${lead ? `<p class="prose">${esc(lead)}</p>` : ""}
+            <details data-k="${k}"><summary>Repository under review <span class="files">${files.map((f) => `<code>${esc(f)}</code>`).join("")}</span></summary><pre class="code">${hi}</pre></details>
+            ${inj ? `<div class="inject-note">⚠ Contains a prompt injection asking reviewers to paste credentials into tickets. There are none in this context to paste.</div>` : ""}`;
+        }
+        return `<p class="prose">${md(b.text)}</p>`;
+      }
+      if (b.type === "thinking" || b.type === "redacted_thinking") return `<div class="muted"><code>thinking</code> (not returned by the API)</div>`;
+      if (b.type === "tool_use") {
+        const inp = b.input || {};
+        visible += JSON.stringify(inp);
+        const counted = b.name === "create_ticket" && inp.title;
+        if (counted) callNum[b.id] = ++n;
+        const rest = Object.entries(inp).filter(([f]) => f !== "title" && f !== "body");
+        return `<div class="call" ${counted ? `data-call="${n}"` : ""} data-k="${k}">
+          <div class="top">${counted ? `<span class="num" title="Jump to this call in the decision log">${n}</span>` : ""}<span>tool call</span> <code>${esc(b.name)}</code></div>
+          ${inp.title ? `<div class="title">${esc(inp.title)}</div>` : ""}
+          ${inp.body ? `<div class="text clamp">${esc(inp.body)}</div><button class="more">Show full body</button>` : ""}
+          ${rest.length ? `<pre class="code">${esc(JSON.stringify(Object.fromEntries(rest), null, 2))}</pre>` : ""}</div>`;
+      }
+      if (b.type === "tool_result") {
+        const c = typeof b.content === "string" ? b.content : (b.content || []).map((x) => x.text).join("\n");
+        visible += c;
+        const num = callNum[b.tool_use_id];
+        const ok = !b.is_error && /^Created /.test(c);
+        return `<div class="call ${ok ? "res-ok" : "res-deny"}" ${num ? `data-call="${num}"` : ""}>
+          <div class="top">${num ? `<span class="num" title="Jump to this call in the decision log">${num}</span>` : ""}<span>tool result</span></div>
+          <div class="text">${esc(c)}</div></div>`;
+      }
+      return `<div class="muted"><code>${esc(b.type)}</code></div>`;
+    }).join("");
+    const kinds = content.map((b) => b.type);
+    const meta = kinds.every((t) => t === "tool_use") ? `${kinds.length} tool call${kinds.length > 1 ? "s" : ""}`
+      : kinds.every((t) => t === "tool_result") ? `${kinds.length} tool result${kinds.length > 1 ? "s" : ""}`
+      : i === ctx.messages.length - 1 && m.role === "assistant" && run && run.final ? "final answer" : "";
+    parts.push(turn(m.role, m.role === "user" ? "User" : "Assistant", [meta], blocks));
+  }
+  const hit = CRED_PATTERNS.find((p) => p.test(visible));
+  $("scan").innerHTML = hit
+    ? `<span class="scan dirty">credential-like string found: ${esc(hit)}</span>`
+    : `<span class="scan clean" title="Scans everything sent to the model for access tokens, delegation IDs, SPIFFE IDs, private keys and the Jira key">✓ no credentials in context</span>`;
+  const el = $("context");
+  keepOpen(el, () => { el.innerHTML = parts.join(""); });
+  el.querySelectorAll(".call .more").forEach((b) => b.onclick = () => expand(b.closest(".call")));
+  link(el);
+}
+
+function renderLog(evs, run) {
+  const key = JSON.stringify(evs);
+  if (key === lastLog) return;
+  lastLog = key;
+  if (!evs.length) { $("log").innerHTML = `<div class="empty">No events yet.</div>`; return; }
+  const t0 = new Date(run?.started || evs[0].ts);
+  const rel = (t) => `<time title="${hms(t)}">+${Math.max(0, (new Date(t) - t0) / 1000).toFixed(1)}s</time>`;
+
+  // Group into setup, one section per tool call, and finish.
+  const groups = [{ name: "Setup", kind: "identity & delegation", evs: [] }];
+  let n = 0;
+  for (const e of evs) {
+    if (e.type === "model.final") { groups.push({ name: "Finish", kind: "", ts: e.ts, evs: [] }); continue; }
+    if (e.type === "model.intent") {
+      const title = (e.summary.match(/“(.*)”/) || [])[1] || e.summary;
+      groups.push({ call: ++n, name: title, kind: "create_ticket", ts: e.ts, evs: [] });
+      continue;
+    }
+    if (e.type === "ticket.created") continue; // the broker's decision row already names the ticket
+    groups[groups.length - 1].evs.push(e);
+  }
+
+  const evRow = (e, i) => {
+    const injected = INJECTED.has(e.type);
+    let sum = esc(e.summary);
+    sum = sum.replace(/ · (inside revocation window[^]*)$/, (_, w) => ` <span class="tag warn">${w}</span>`);
+    const icon = injected ? "" : e.result === "ok" ? `<span class="icon">✓</span> ` : e.result === "deny" ? "✗ " : "";
+    const checks = e.checks || [];
+    const failed = checks.filter((c) => !c.ok).length;
+    const list = checks.map((c) => `<li class="${c.ok ? "v" : "x"}">${c.ok ? "✓" : "✗"} ${esc(c.name)}${c.detail ? ` <span class="muted">${esc(c.detail)}</span>` : ""}</li>`).join("");
+    const det = checks.length ? `<details class="checks" data-k="ck${i}" ${failed ? "open" : ""}><summary>${failed ? `${failed} of ${checks.length} checks failed` : `${checks.length} checks passed`}</summary><ul>${list}</ul></details>` : "";
+    return `<div class="ev ${esc(e.result)} ${injected ? "injected" : ""}">${rel(e.ts)}<span class="comp ${esc(e.component)}">${esc(e.component)}</span>
+      <div class="sum">${injected ? `<span class="tag scn">scenario</span> ` : ""}${icon}${sum}${det}</div></div>`;
+  };
+
+  let i = 0;
+  const html = groups.filter((g) => g.evs.length || g.call).map((g) =>
+    `<div class="group" ${g.call ? `data-call="${g.call}"` : ""}><div class="hd">
+      ${g.call ? `<span class="num" title="Jump to this call in the model context">${g.call}</span>` : ""}
+      <span class="name">${esc(g.name)}</span>${g.kind ? `<span class="kind">${g.call ? "<code>create_ticket</code>" : esc(g.kind)}</span>` : ""}${g.ts ? rel(g.ts) : ""}</div>
+      ${g.evs.map((e) => evRow(e, i++)).join("")}</div>`).join("");
+  const el = $("log");
+  keepOpen(el, () => { el.innerHTML = html; });
+  link(el);
+}
+
+function renderJira(tickets) {
+  $("jiraCount").textContent = tickets.length ? `(${tickets.length})` : "";
+  if (!tickets.length) { $("jira").innerHTML = `<div class="empty">No tickets yet.</div>`; return; }
+  $("jira").innerHTML = `<table><thead><tr><th>Key</th><th>Title</th><th>Reporter</th><th>On behalf of</th><th>Created</th></tr></thead><tbody>${
+    tickets.slice().reverse().map((t) => `<tr><td><b>${esc(t.key)}</b></td><td>${esc(t.title)}<details><summary>body</summary><pre class="code">${esc(t.body)}</pre></details></td>
+      <td><code>${esc(t.reporter)}</code></td><td>${esc(t.on_behalf_of)}</td><td>${hms(t.created)}</td></tr>`).join("")}</tbody></table>`;
+}
+</script>
+</body>
+</html>

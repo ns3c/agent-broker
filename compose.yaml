@@ -1,0 +1,102 @@
+# One container per service. The boundaries the demo is about are enforced
+# by the platform, not by convention:
+#   - each service mounts only its own key directory, read-only
+#   - only the harness receives ANTHROPIC_API_KEY
+#   - only the broker (and web's read-only ticket view) can reach Jira;
+#     the harness has no network route to it
+#   - only web is published
+#
+#   docker compose up --build        start (keys are generated once)
+#   docker compose down -v           stop and discard keys and state
+
+name: agent-credential-broker
+
+x-env: &env
+  PKI_DIR: /pki
+  GRANTS_LISTEN: 0.0.0.0:9001
+  BROKER_LISTEN: 0.0.0.0:9002
+  HARNESS_LISTEN: 0.0.0.0:9003
+  JIRA_LISTEN: 0.0.0.0:9004
+  EVENTS_LISTEN: 0.0.0.0:9000
+  GRANTS_URL: https://grants:9001
+  BROKER_URL: https://broker:9002
+  HARNESS_URL: https://harness:9003
+  JIRA_URL: http://jira:9004
+  EVENTS_URL: http://web:9000
+
+x-service: &service
+  build: .
+  image: agent-credential-broker:local
+  restart: unless-stopped
+  depends_on:
+    pki:
+      condition: service_completed_successfully
+
+services:
+  pki:
+    build: .
+    image: agent-credential-broker:local
+    command: ["pki"]
+    environment: *env
+    network_mode: none
+    volumes:
+      - pki:/pki
+
+  grants:
+    <<: *service
+    command: ["grants"]
+    environment: *env
+    networks: [mesh]
+    volumes:
+      - { type: volume, source: pki, target: /pki/grants, read_only: true, volume: { subpath: grants } }
+
+  broker:
+    <<: *service
+    command: ["broker"]
+    environment: *env
+    networks: [mesh, tools]
+    volumes:
+      - { type: volume, source: pki, target: /pki/broker, read_only: true, volume: { subpath: broker } }
+
+  harness:
+    <<: *service
+    command: ["harness"]
+    environment:
+      <<: *env
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in .env}
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-opus-5-5}
+    networks: [mesh]
+    volumes:
+      - { type: volume, source: pki, target: /pki/harness, read_only: true, volume: { subpath: harness } }
+
+  jira:
+    <<: *service
+    command: ["jira"]
+    environment: *env
+    networks: [tools]
+    volumes:
+      - { type: volume, source: pki, target: /pki/jira, read_only: true, volume: { subpath: jira } }
+
+  web:
+    <<: *service
+    command: ["web"]
+    environment:
+      <<: *env
+      PORT: "8080"
+      RUNS_PER_DAY: ${RUNS_PER_DAY:-300}
+    networks: [mesh, tools]
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"
+    volumes:
+      - { type: volume, source: pki, target: /pki/web, read_only: true, volume: { subpath: web } }
+
+networks:
+  # Service-to-service mTLS and event reporting. Not internal: the harness
+  # needs egress to the Anthropic API.
+  mesh: {}
+  # The "external" Jira API. Internal: no egress, and the harness is not on it.
+  tools:
+    internal: true
+
+volumes:
+  pki: {}
