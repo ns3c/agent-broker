@@ -5,6 +5,7 @@ package web
 
 import (
 	"crypto/sha256"
+	"crypto/tls"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"sync"
@@ -86,6 +88,10 @@ type Server struct {
 }
 
 func Main() {
+	password := os.Getenv("DEMO_PASSWORD")
+	if password == "" {
+		log.Fatal("DEMO_PASSWORD must be set (e.g. in .env)")
+	}
 	id, err := pki.LoadServiceIdentity(config.PKIDir(), "web")
 	if err != nil {
 		log.Fatal(err)
@@ -111,7 +117,17 @@ func Main() {
 	mux.HandleFunc("POST /api/runs", s.withSession(s.startRun))
 	mux.HandleFunc("POST /api/reset", s.withSession(s.reset))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) })
-	httpx.Serve("web", &http.Server{Addr: ":" + config.Env("PORT", "8080"), Handler: mux}, false)
+	g := newGate(password)
+	srv := &http.Server{Addr: ":" + config.Env("PORT", "8080"), Handler: g.wrap(mux)}
+	// Public HTTPS when a certificate is mounted; plain HTTP otherwise (local dev).
+	if certFile, keyFile := os.Getenv("TLS_CERT"), os.Getenv("TLS_KEY"); certFile != "" || keyFile != "" {
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			log.Fatalf("TLS: %v", err)
+		}
+		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
+	}
+	httpx.Serve("web", srv, srv.TLSConfig != nil)
 }
 
 // ---- sessions ----

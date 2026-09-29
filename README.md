@@ -63,13 +63,20 @@ Revocation and user state are checked when the harness exchanges the delegation 
 
 ## Run
 
-Put `ANTHROPIC_API_KEY=...` in `.env`, then:
+Put these in `.env`:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...
+DEMO_PASSWORD=...   # required; web won't start without it
+```
+
+Put the TLS certificate and key for your domain in `cert.pem` and `key.pem` in the repo root. Both files are git- and docker-ignored, mounted read-only, and `key.pem` can stay `0640`. Then:
 
 ```bash
 docker compose up --build
 ```
 
-Then open http://localhost:8080.
+Then open `https://<your domain>` and enter the demo password. The browser remembers it for a year, and changing `DEMO_PASSWORD` signs everyone out.
 
 Compose runs each service in its own container, so the boundaries are enforced by the platform:
 - **Keys:** a one-shot `pki` container generates key material into a volume. Each service mounts only its own subdirectory, read-only.
@@ -77,7 +84,8 @@ Compose runs each service in its own container, so the boundaries are enforced b
 - **Networks:**
   - `mesh` carries mTLS and events.
   - `tools` is internal, with no internet access, and holds Jira. Only `broker` and `web` (for the read-only ticket view) are on it, so the harness has no network route to Jira.
-- **Ports:** only `web` is published. It binds to `127.0.0.1` by default; set `WEB_BIND=0.0.0.0` to expose it.
+- **Ports:** only `web` is published, as HTTPS on `0.0.0.0:443`. Every other service is reachable only on the internal Docker networks.
+- **Restarts:** every service uses `restart: unless-stopped` and has log rotation.
 
 To stop the stack and discard all keys and state:
 
@@ -85,7 +93,7 @@ To stop the stack and discard all keys and state:
 docker compose down -v
 ```
 
-Settings: `CLAUDE_MODEL` (default `claude-opus-5-5`), `WEB_PORT`, `RUNS_PER_DAY`.
+Settings: `CLAUDE_MODEL` (default `claude-opus-5-5`), `RUNS_PER_DAY`, `WEB_BIND` / `WEB_PORT` (default `0.0.0.0` / `443`), and `TLS_KEY_GID` (the group that owns `key.pem`, default `1000`).
 
 **Without Docker:** `go build -o bin/demo ./cmd/demo`, then `./bin/demo supervise`. This runs the same services as local processes, and `supervise` gives the API key only to the harness.
 

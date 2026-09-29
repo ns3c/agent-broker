@@ -209,17 +209,18 @@ td details.tk > summary::before { color: var(--faint); }
 <div class="wrap">
   <div class="topbar">
     <h1>Agent Credential Broker</h1>
-    <span class="sub">The model emits intent. The harness owns credentials. The broker enforces policy.</span>
+    <span class="sub">Run-scoped identity and delegated authorization for AI agents.</span>
     <span class="spacer"></span>
     <button class="btn" id="reset">Reset</button>
   </div>
 
   <section class="hero">
     <div>
-      <h2>An AI agent that files real tickets, with no credentials to leak.</h2>
-      <p>A Claude code reviewer audits a small repo and files Jira tickets. <b>The model never holds a key.</b>
-        Each run gets its own workload identity and a narrow, revocable grant from the user, and a broker checks both before
-        calling Jira with a key only it holds. Pick a scenario to see the grant work, expire, get revoked or get stolen.</p>
+      <h2>Code Review Agent</h2>
+      <p>A Claude agent reviews a small codebase and files mock Jira tickets. <b>The model never holds a key.</b>
+        Each run gets its own workload identity and a narrow, revocable grant from the user. The broker verifies both before
+        calling Jira with a key only it holds.
+        <br><br>Pick a scenario to see how the system behaves: <b>normal operation, grant expiry, revocation, or failed token theft.</b></p>
     </div>
     <div class="runbox">
       <label class="lbl" for="scnSel">Scenario</label>
@@ -309,12 +310,17 @@ $("next").onclick = () => step(1);
 async function start(s) {
   $("err").hidden = true;
   const r = await fetch("/api/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scenario: s }) });
+  if (r.status === 401) { location.href = "/login"; return; }
   if (!r.ok) { const e = await r.json().catch(() => ({})); $("err").textContent = e.detail || e.error || "Failed to start"; $("err").hidden = false; }
   poll();
 }
 
 async function poll() {
-  try { state = await (await fetch("/api/state")).json(); render(); } catch (e) { /* keep polling */ }
+  try {
+    const r = await fetch("/api/state");
+    if (r.status === 401) { location.href = "/login"; return; }
+    state = await r.json(); render();
+  } catch (e) { /* keep polling */ }
 }
 setInterval(poll, 1000);
 poll();

@@ -91,7 +91,8 @@ func PostJSON(c *http.Client, url string, headers map[string]string, in, out any
 // Serve runs srv and exits the process if it stops.
 func Serve(name string, srv *http.Server, tls bool) {
 	srv.ReadHeaderTimeout = 5 * time.Second
-	log.Printf("%s listening on %s (mtls=%v)", name, srv.Addr, tls)
+	srv.IdleTimeout = 2 * time.Minute
+	log.Printf("%s listening on %s (tls=%v)", name, srv.Addr, tls)
 	var err error
 	if tls {
 		err = srv.ListenAndServeTLS("", "")

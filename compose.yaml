@@ -4,7 +4,7 @@
 #   - only the harness receives ANTHROPIC_API_KEY
 #   - only the broker (and web's read-only ticket view) can reach Jira;
 #     the harness has no network route to it
-#   - only web is published
+#   - only web is published, as HTTPS on :443
 #
 #   docker compose up --build        start (keys are generated once)
 #   docker compose down -v           stop and discard keys and state
@@ -28,6 +28,9 @@ x-service: &service
   build: .
   image: agent-credential-broker:local
   restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
   depends_on:
     pki:
       condition: service_completed_successfully
@@ -82,13 +85,21 @@ services:
     command: ["web"]
     environment:
       <<: *env
-      PORT: "8080"
+      PORT: "8443"
+      TLS_CERT: /tls/cert.pem
+      TLS_KEY: /tls/key.pem
       RUNS_PER_DAY: ${RUNS_PER_DAY:-300}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
     networks: [mesh, tools]
     ports:
-      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"
+      - "${WEB_BIND:-0.0.0.0}:${WEB_PORT:-443}:8443"
+    # key.pem stays 0640 on the host; joining its group lets the nonroot
+    # user read it without widening its permissions.
+    group_add: ["${TLS_KEY_GID:-1000}"]
     volumes:
       - { type: volume, source: pki, target: /pki/web, read_only: true, volume: { subpath: web } }
+      - { type: bind, source: ./cert.pem, target: /tls/cert.pem, read_only: true }
+      - { type: bind, source: ./key.pem, target: /tls/key.pem, read_only: true }
 
 networks:
   # Service-to-service mTLS and event reporting. Not internal: the harness
