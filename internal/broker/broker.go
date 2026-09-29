@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -74,7 +75,10 @@ type ticketRequest struct {
 	Project string `json:"project"`
 	Title   string `json:"title"`
 	Body    string `json:"body"`
+	idemKey string // from the Idempotency-Key header
 }
+
+var idemKeyPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 func (b *Broker) handle(w http.ResponseWriter, r *http.Request) {
 	action, ok := actions[r.PathValue("tool")]
@@ -85,6 +89,11 @@ func (b *Broker) handle(w http.ResponseWriter, r *http.Request) {
 	var req ticketRequest
 	if err := httpx.ReadJSON(r, &req); err != nil {
 		httpx.Fail(w, http.StatusBadRequest, "bad_request", "")
+		return
+	}
+	req.idemKey = r.Header.Get("Idempotency-Key")
+	if req.idemKey != "" && !idemKeyPattern.MatchString(req.idemKey) {
+		httpx.Fail(w, http.StatusBadRequest, "bad_idempotency_key", "")
 		return
 	}
 
@@ -109,14 +118,21 @@ func (b *Broker) handle(w http.ResponseWriter, r *http.Request) {
 		httpx.Fail(w, http.StatusBadGateway, "upstream_error", "")
 		return
 	}
-	b.ev.Emit(events.Event{
-		Tenant: claims.Tenant, RunID: runID, Type: "broker.decision", Result: "ok",
-		Summary: fmt.Sprintf("%s allowed → %s created with broker's Jira key", action, issue.Key), Checks: checks,
-	})
-	b.ev.Emit(events.Event{
-		Tenant: claims.Tenant, RunID: runID, Type: "ticket.created", Result: "info",
-		Summary: issue.Key + ": " + issue.Title,
-	})
+	if issue.Replayed {
+		b.ev.Emit(events.Event{
+			Tenant: claims.Tenant, RunID: runID, Type: "broker.decision", Result: "ok",
+			Summary: fmt.Sprintf("%s allowed → retry matched %s by idempotency key; no duplicate created", action, issue.Key), Checks: checks,
+		})
+	} else {
+		b.ev.Emit(events.Event{
+			Tenant: claims.Tenant, RunID: runID, Type: "broker.decision", Result: "ok",
+			Summary: fmt.Sprintf("%s allowed → %s created with broker's Jira key", action, issue.Key), Checks: checks,
+		})
+		b.ev.Emit(events.Event{
+			Tenant: claims.Tenant, RunID: runID, Type: "ticket.created", Result: "info",
+			Summary: issue.Key + ": " + issue.Title,
+		})
+	}
 	// Minimal result: the harness never sees Jira internals.
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"key": issue.Key, "title": issue.Title})
 }
@@ -196,15 +212,21 @@ func (b *Broker) authorize(r *http.Request, action, project string) (token.Claim
 }
 
 type issue struct {
-	Key   string `json:"key"`
-	Title string `json:"title"`
+	Key      string `json:"key"`
+	Title    string `json:"title"`
+	Replayed bool   `json:"replayed"`
 }
 
 func (b *Broker) createIssue(c token.Claims, req ticketRequest) (issue, error) {
 	_, runID, _ := pki.ParseRunID(c.Act.Sub)
 	var out issue
-	err := httpx.PostJSON(b.jira, config.JiraURL+"/rest/api/issue",
-		map[string]string{"Authorization": "Bearer " + b.jiraKey, "X-Tenant": c.Tenant},
+	headers := map[string]string{"Authorization": "Bearer " + b.jiraKey, "X-Tenant": c.Tenant}
+	if req.idemKey != "" {
+		// Namespaced by the authenticated run, so one run's key can never
+		// match another run's ticket.
+		headers["Idempotency-Key"] = runID + ":" + req.idemKey
+	}
+	err := httpx.PostJSON(b.jira, config.JiraURL+"/rest/api/issue", headers,
 		map[string]string{
 			"project":      req.Project,
 			"title":        req.Title,

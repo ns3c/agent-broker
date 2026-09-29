@@ -25,12 +25,14 @@ type Issue struct {
 	OnBehalfOf string    `json:"on_behalf_of"`
 	RunID      string    `json:"run_id"`
 	Created    time.Time `json:"created"`
+	Replayed   bool      `json:"replayed,omitempty"` // response only: request matched an earlier Idempotency-Key
 }
 
 type store struct {
 	apiKey string
 	mu     sync.Mutex
-	issues map[string][]Issue // tenant -> issues
+	issues map[string][]Issue        // tenant -> issues
+	idem   map[string]map[string]int // tenant -> Idempotency-Key -> index into issues
 }
 
 func Main() {
@@ -38,7 +40,7 @@ func Main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	s := &store{apiKey: strings.TrimSpace(string(key)), issues: map[string][]Issue{}}
+	s := &store{apiKey: strings.TrimSpace(string(key)), issues: map[string][]Issue{}, idem: map[string]map[string]int{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /rest/api/issue", s.create)
 	// Read-only listing for the dashboard; bound to localhost only.
@@ -59,11 +61,26 @@ func (s *store) create(w http.ResponseWriter, r *http.Request) {
 		httpx.Fail(w, http.StatusBadRequest, "bad_request", "")
 		return
 	}
+	idemKey := r.Header.Get("Idempotency-Key")
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	// A retried request returns the ticket the first attempt created.
+	if i, ok := s.idem[tenant][idemKey]; ok && idemKey != "" {
+		prev := s.issues[tenant][i]
+		prev.Replayed = true
+		httpx.WriteJSON(w, http.StatusOK, prev)
+		return
+	}
 	in.Key = fmt.Sprintf("%s-%d", config.Project, len(s.issues[tenant])+1)
 	in.Created = time.Now()
+	in.Replayed = false
 	s.issues[tenant] = append(s.issues[tenant], in)
-	s.mu.Unlock()
+	if idemKey != "" {
+		if s.idem[tenant] == nil {
+			s.idem[tenant] = map[string]int{}
+		}
+		s.idem[tenant][idemKey] = len(s.issues[tenant]) - 1
+	}
 	httpx.WriteJSON(w, http.StatusCreated, in)
 }
 
@@ -77,6 +94,7 @@ func (s *store) list(w http.ResponseWriter, r *http.Request) {
 func (s *store) reset(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	delete(s.issues, r.PathValue("tenant"))
+	delete(s.idem, r.PathValue("tenant"))
 	s.mu.Unlock()
 	w.WriteHeader(http.StatusNoContent)
 }

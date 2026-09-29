@@ -6,433 +6,684 @@
 <title>Agent Credential Broker</title>
 <style>
 :root {
-  --bg: #f5f4f0; --panel: #ffffff; --sunken: #f7f6f2; --ink: #1d1d1b; --muted: #6b6b66; --faint: #9a9993; --line: #e4e2dc;
-  --ok: #1f7a4d; --ok-bg: #e5f3ea; --deny: #b42318; --deny-bg: #fbe9e7;
-  --warn: #8a5d00; --warn-bg: #fdf3d8; --accent: #c15f3c; --accent-bg: #fbeee8; --chip: #efeee9;
-  --c-user: #2f6fd1; --c-harness: #7a4fc9; --c-grants: #16806f; --c-broker: #c15f3c; --c-system: #6b6b66;
+  --bg: #f5f7fa; --panel: #ffffff; --panel-2: #f8fafc; --line: #e1e6ed; --line-2: #edf0f4;
+  --ink: #17202c; --muted: #5d6a7b; --faint: #8b96a5;
+  --ok: #1a7f37; --ok-bg: #e8f5ec; --deny: #c9302c; --deny-bg: #fdecea; --warn: #9a6400; --warn-bg: #fff4d6;
+  --accent: #b7791f; --accent-bg: #fff8e6;
+  --r-system: #6b7686; --r-user: #2f6fd1; --r-assistant: #7c4dcc; --r-action: #0f8a7a; --r-result: #1a7f37;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #141413; --panel: #1d1d1b; --sunken: #181817; --ink: #ecebe6; --muted: #a09f98; --faint: #74736d; --line: #302f2b;
-    --ok: #5cc98f; --ok-bg: #16301f; --deny: #f2877b; --deny-bg: #3a1c19;
-    --warn: #e6b94f; --warn-bg: #352b12; --accent: #e08a67; --accent-bg: #36231b; --chip: #292926;
-    --c-user: #7aa7f0; --c-harness: #b192ee; --c-grants: #5cc7b4; --c-broker: #e08a67; --c-system: #a09f98;
+    --bg: #0b1017; --panel: #111822; --panel-2: #0e141c; --line: #232d3b; --line-2: #1a2230;
+    --ink: #e6edf3; --muted: #93a1b3; --faint: #677386;
+    --ok: #3fb950; --ok-bg: #12261a; --deny: #f85149; --deny-bg: #2c1316; --warn: #e3b341; --warn-bg: #2a2110;
+    --accent: #f0b429; --accent-bg: #231c0b;
+    --r-system: #8b98a9; --r-user: #58a6ff; --r-assistant: #b392f0; --r-action: #2dd4bf; --r-result: #3fb950;
   }
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html, body { height: 100%; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); display: flex; flex-direction: column; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); }
+.wrap { max-width: 1680px; margin: 0 auto; padding: 0 24px 32px; }
 code, .mono { font-family: var(--mono); font-size: 12px; }
 button { font: inherit; color: inherit; cursor: pointer; }
 .muted { color: var(--muted); }
+svg.i { width: 16px; height: 16px; flex: none; vertical-align: -3px; }
+.ok-c { color: var(--ok); } .deny-c { color: var(--deny); } .warn-c { color: var(--warn); }
 
-/* ---- header ---- */
-header { background: var(--panel); border-bottom: 1px solid var(--line); padding: 16px 24px 0; }
-.titlebar { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-h1 { margin: 0; font-size: 17px; letter-spacing: -.01em; }
-.thesis { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
-.thesis b { color: var(--ink); font-weight: 600; }
-.titlebar .spacer { flex: 1; }
-.quota { font-size: 12px; color: var(--muted); }
-.btn { border: 1px solid var(--line); background: var(--panel); padding: 4px 10px; border-radius: 6px; font-size: 13px; }
-.btn:hover { border-color: var(--muted); }
+/* ---- top bar + hero ---- */
+.topbar { display: flex; align-items: center; gap: 12px; padding: 16px 0 0; }
+.topbar h1 { margin: 0; font-size: 18px; letter-spacing: -.01em; }
+.topbar .sub { color: var(--muted); font-size: 13px; }
+.topbar .spacer { flex: 1; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 12px; font-size: 13px; }
+.btn:hover:not(:disabled) { border-color: var(--muted); }
+.btn:disabled { opacity: .55; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #17130a; font-weight: 600; padding: 9px 18px; font-size: 14px; }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.08); border-color: var(--accent); }
 
-.scenarios { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
-.scn { text-align: left; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 8px 12px; transition: border-color .12s, background .12s; }
-.scn b { display: block; font-size: 13px; }
-.scn span { display: block; font-size: 12px; color: var(--muted); }
-.scn:hover:not(:disabled) { border-color: var(--accent); }
-.scn.active { border-color: var(--accent); background: var(--accent-bg); }
-.scn:disabled { cursor: default; }
-.scn:disabled:not(.active) { opacity: .5; }
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 32px; align-items: center; padding: 14px 0 16px; }
+.hero h2 { margin: 0 0 6px; font-size: 23px; line-height: 1.25; letter-spacing: -.02em; }
+.hero p { margin: 0; color: var(--muted); font-size: 14px; max-width: 900px; }
+.hero p b { color: var(--ink); font-weight: 600; }
+.runbox { border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 12px 16px; }
+.runbox .lbl { display: block; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.select { position: relative; margin: 6px 0 8px; }
+.select select { appearance: none; -webkit-appearance: none; width: 100%; font: 600 15px var(--sans); color: var(--ink); background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 38px 9px 12px; cursor: pointer; }
+.select select:hover { border-color: var(--muted); }
+.select select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.select select option { background: var(--panel); color: var(--ink); font-weight: 400; }
+.select::after { content: ""; position: absolute; right: 14px; top: 50%; width: 8px; height: 8px; margin-top: -6px; pointer-events: none;
+  border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); }
+.runbox .desc { font-size: 13px; color: var(--muted); min-height: 2.9em; }
+.runbox .row { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.runbox .quota { font-size: 12px; color: var(--muted); }
 .err { color: var(--deny); font-size: 13px; margin-top: 8px; }
 
-.runbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; padding: 12px 0; font-size: 12px; color: var(--muted); min-height: 46px; }
-.runbar .kv { display: inline-flex; gap: 6px; align-items: center; }
-.runbar code { color: var(--ink); }
-.runbar .desc { flex-basis: 100%; font-size: 13px; color: var(--ink); }
-.stat { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; padding: 2px 9px; border-radius: 999px; background: var(--chip); color: var(--ink); }
-.stat.ok { background: var(--ok-bg); color: var(--ok); }
-.stat.deny { background: var(--deny-bg); color: var(--deny); }
-.stat.warn { background: var(--warn-bg); color: var(--warn); }
-.runbar .stats { display: inline-flex; gap: 6px; margin-left: auto; }
 
-nav { display: flex; gap: 4px; margin: 0 -12px; }
-nav button { border: 0; border-bottom: 2px solid transparent; background: none; padding: 8px 12px; color: var(--muted); }
-nav button.active { border-bottom-color: var(--accent); color: var(--ink); font-weight: 600; }
+/* ---- status bar ---- */
+.status { display: flex; flex-wrap: wrap; align-items: center; margin: 12px 0; border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 8px 6px; min-height: 52px; }
+.status .cell { display: flex; align-items: center; gap: 10px; padding: 4px 18px; border-right: 1px solid var(--line); font-size: 14px; white-space: nowrap; }
+.status .cell:last-of-type { border-right: 0; }
+.status .k { color: var(--muted); font-size: 13px; }
+.status .v { font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.status .v .mono { font-size: 13px; }
+.status .end { margin-left: auto; padding: 0 10px; }
+.badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 8px; border: 1px solid; }
+.badge.ok { color: var(--ok); background: var(--ok-bg); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+.badge.deny { color: var(--deny); background: var(--deny-bg); border-color: color-mix(in srgb, var(--deny) 35%, transparent); }
+.status .idle { color: var(--muted); padding: 4px 18px; }
 
-/* ---- layout ---- */
-main { flex: 1; min-height: 0; padding: 16px 24px 20px; display: flex; flex-direction: column; }
-.grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-.panel > h2 { margin: 0; padding: 10px 16px; font-size: 13px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
-.panel > h2 .muted { font-weight: 400; }
-.panel > h2 .right { margin-left: auto; display: inline-flex; gap: 4px; align-items: center; }
-.panel > .body { flex: 1; min-height: 0; overflow: auto; padding: 16px; }
-#tab-jira { flex: 1; min-height: 0; display: flex; }
-#tab-jira .panel { flex: 1; }
-@media (max-width: 1000px) {
-  body { height: auto; display: block; }
-  header, main { padding-left: 16px; padding-right: 16px; }
-  .scenarios { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .grid { grid-template-columns: 1fr; }
-  .panel > .body { max-height: 75vh; }
-  .runbar .stats { margin-left: 0; }
-}
-.empty { color: var(--muted); padding: 32px 0; text-align: center; }
+/* ---- panels ---- */
+.main { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-width: 0; display: flex; flex-direction: column; }
+.phd { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.phd .ic { width: 22px; height: 22px; color: var(--muted); }
+.phd h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.phd .ps { font-size: 12px; color: var(--muted); }
+.phd .right { margin-left: auto; display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.empty { color: var(--muted); padding: 28px 16px; text-align: center; font-size: 13px; }
+#agentPanel { min-height: 560px; }
+#agentPanel .scroll { position: relative; flex: 1; }
+#agent { position: absolute; inset: 0; overflow: auto; padding: 8px 12px 12px; }
 
-/* ---- component chips (also the legend) ---- */
-.comp { --c: var(--muted); display: inline-block; font: 500 11px/18px var(--mono); padding: 0 7px; border-radius: 4px;
-        color: var(--c); background: color-mix(in srgb, var(--c) 12%, transparent); border: 1px solid color-mix(in srgb, var(--c) 28%, transparent); }
-.comp.user { --c: var(--c-user); } .comp.harness { --c: var(--c-harness); } .comp.grants { --c: var(--c-grants); } .comp.broker { --c: var(--c-broker); }
-.scan { font-size: 12px; font-weight: 500; padding: 1px 9px; border-radius: 999px; }
-.scan.clean { background: var(--ok-bg); color: var(--ok); }
-.scan.dirty { background: var(--deny-bg); color: var(--deny); }
-
-/* ---- model context: one card per turn ---- */
-.turn { --c: var(--c-system); border: 1px solid var(--line); border-left: 3px solid var(--c); border-radius: 8px; background: var(--panel); margin-bottom: 14px; overflow: hidden; }
-.turn.user { --c: var(--c-user); }
-.turn.assistant { --c: var(--accent); }
-.turn > .hd { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--line); background: var(--sunken); border-radius: 0 7px 0 0; font-size: 12px; }
-.turn > .hd .role { font-weight: 700; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--c); }
-.turn > .hd .meta { color: var(--muted); }
-.turn > .bd { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-.prose { white-space: pre-wrap; word-break: break-word; margin: 0; }
-.prose code { background: var(--chip); padding: 0 4px; border-radius: 3px; }
-pre { font-family: var(--mono); font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; margin: 0; }
-pre.code { background: var(--sunken); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; max-height: 420px; overflow: auto; }
-details > summary { cursor: pointer; color: var(--muted); font-size: 13px; list-style: none; display: flex; gap: 6px; align-items: center; }
+/* agent thoughts & actions: one row per content block */
+.arow { display: grid; grid-template-columns: 52px 108px minmax(0, 1fr); gap: 10px; align-items: start; padding: 5px 0; }
+.arow time { font: 12px/30px var(--mono); color: var(--faint); text-align: right; }
+.role { display: block; text-align: center; font: 600 11px/26px var(--sans); letter-spacing: .05em; text-transform: uppercase; border-radius: 6px; margin-top: 2px;
+        --c: var(--r-system); color: var(--c); background: color-mix(in srgb, var(--c) 12%, transparent); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); }
+.role.user { --c: var(--r-user); } .role.assistant { --c: var(--r-assistant); } .role.action { --c: var(--r-action); } .role.result { --c: var(--r-result); } .role.error { --c: var(--deny); }
+.role.thinking { border-style: dashed; }
+.abox { border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 8px; padding: 7px 12px; min-width: 0; transition: border-color .12s, box-shadow .12s; }
+.abox.link { cursor: pointer; }
+.abox.link:hover { border-color: var(--muted); }
+.abox.hl { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.abox pre, .abox .txt { margin: 0; font: 12px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; }
+.abox .txt.prose { font: 13.5px/1.55 var(--sans); }
+.abox .txt code { background: var(--line-2); padding: 0 4px; border-radius: 3px; }
+.abox .clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.abox .tname { font: 600 13px var(--mono); }
+.abox .tsub { font-size: 12.5px; color: var(--muted); }
+.abox .res { display: flex; gap: 8px; align-items: flex-start; font: 12.5px/1.6 var(--mono); }
+.abox .res svg.i { margin-top: 2px; }
+.abox.err { border-color: color-mix(in srgb, var(--deny) 40%, transparent); background: var(--deny-bg); }
+.abox.err .res { color: var(--deny); }
+.abox .note { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.more { border: 0; background: none; padding: 0; margin-top: 4px; font-size: 12px; color: var(--accent); }
+.files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.files code { display: inline-flex; gap: 5px; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 1px 8px; background: var(--panel); }
+.inject { background: var(--warn-bg); color: var(--warn); border-radius: 3px; }
+details > summary { cursor: pointer; color: var(--muted); font-size: 12px; list-style: none; margin-top: 4px; }
 details > summary::-webkit-details-marker { display: none; }
-details > summary::before { content: "▸"; font-size: 10px; width: 10px; transition: transform .12s; }
-details[open] > summary::before { transform: rotate(90deg); }
-details[open] > summary { margin-bottom: 8px; }
-.files { display: inline-flex; flex-wrap: wrap; gap: 4px; }
-.files code { background: var(--chip); padding: 0 6px; border-radius: 4px; color: var(--ink); }
-.inject { background: var(--warn-bg); color: var(--warn); border-radius: 3px; outline: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); }
-.inject-note { font-size: 12px; color: var(--warn); }
+details > summary::before { content: "▸ "; }
+details[open] > summary::before { content: "▾ "; }
+details pre.code { margin-top: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; max-height: 360px; overflow: auto; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; }
 
-/* tool calls & results */
-.call { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; background: var(--panel); transition: box-shadow .12s, border-color .12s; }
-.call .top { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
-.call .title { font-weight: 600; margin-top: 4px; }
-.call .text { margin-top: 4px; color: var(--muted); font-size: 13px; white-space: pre-wrap; word-break: break-word; }
-.call .text.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.call .more { border: 0; background: none; padding: 0; margin-top: 2px; font-size: 12px; color: var(--accent); }
-.call.res-ok { border-left: 3px solid var(--ok); }
-.call.res-deny { border-left: 3px solid var(--deny); background: var(--deny-bg); }
-.call.res-deny .text { color: var(--deny); }
-.call.res-ok .text { color: var(--ink); }
-.num { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--ink); color: var(--panel); font: 600 11px/1 var(--sans); cursor: pointer; }
-.hl { border-color: var(--accent) !important; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+/* execution timeline */
+.tl { list-style: none; margin: 0; padding: 6px 0; }
+.tl li { position: relative; display: grid; grid-template-columns: 62px 28px minmax(0, 1fr) 24px; align-items: center; gap: 8px; padding: 4px 16px 4px 8px; cursor: pointer; }
+.tl li:hover { background: var(--panel-2); }
+.tl li.sel { background: var(--accent-bg); box-shadow: inset 3px 0 0 var(--accent); }
+.tl time { font: 12px var(--mono); color: var(--faint); text-align: right; }
+.tl .dot { justify-self: center; width: 12px; height: 12px; border-radius: 50%; background: var(--ok); position: relative; z-index: 1; box-shadow: 0 0 0 3px var(--panel); }
+.tl li.sel .dot { box-shadow: 0 0 0 3px var(--accent-bg); }
+.tl li::before { content: ""; position: absolute; left: 91px; top: 0; bottom: 0; width: 2px; background: var(--line); }
+.tl li:first-child::before { top: 50%; } .tl li:last-child::before { bottom: 50%; }
+.tl li:only-child::before { display: none; }
+.tl .dot.warn { background: var(--warn); } .tl .dot.deny { background: var(--deny); } .tl .dot.info { background: var(--faint); }
+.tl .dot.pending { background: var(--panel); border: 2px solid var(--warn); animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+.tl .t { font-weight: 600; font-size: 13.5px; line-height: 1.35; }
+.tl .s { font-size: 12px; line-height: 1.35; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl li.warn .t { color: var(--warn); } .tl li.deny .t { color: var(--deny); }
 
-/* ---- decision log: grouped by tool call ---- */
-.group { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-bottom: 14px; transition: box-shadow .12s, border-color .12s; }
-.group > .hd { display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--sunken); border-bottom: 1px solid var(--line); border-radius: 8px 8px 0 0; font-size: 13px; }
-.group > .hd .name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.group > .hd .kind { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.group > .hd time { margin-left: auto; }
-.ev { display: grid; grid-template-columns: 52px 66px minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px 12px; border-top: 1px solid var(--line); }
-.group > .hd + .ev { border-top: 0; }
-time { font: 12px/18px var(--mono); color: var(--faint); text-align: right; }
-.ev .comp { text-align: center; }
-.ev .sum { min-width: 0; word-break: break-word; }
-.ev.ok .sum .icon { color: var(--ok); }
-.ev.deny { background: var(--deny-bg); }
-.ev.deny .sum { color: var(--deny); font-weight: 500; }
-.ev.error .sum { color: var(--warn); }
-.ev.info .sum { color: var(--muted); }
-.ev.injected { background: var(--warn-bg); }
-.ev.injected .sum { color: var(--warn); font-weight: 500; }
-.tag { display: inline-block; font-size: 11px; font-weight: 500; padding: 0 7px; border-radius: 999px; margin-left: 4px; vertical-align: 1px; }
-.tag.warn { background: var(--warn-bg); color: var(--warn); outline: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); }
-.tag.scn { background: var(--warn); color: var(--panel); }
-.checks { margin-top: 4px; }
-.checks > summary { font-size: 12px; }
-.checks ul { list-style: none; margin: 0; padding: 0; font: 12px/1.7 var(--mono); color: var(--muted); }
-.checks .v { color: var(--ok); } .checks .x { color: var(--deny); font-weight: 600; }
+/* selected event */
+.nav { display: inline-flex; gap: 4px; }
+.nav button { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; width: 28px; height: 26px; display: grid; place-items: center; padding: 0; }
+.nav button:disabled { opacity: .4; cursor: default; }
+.detail { margin: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.detail.warn { border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: var(--warn-bg); }
+.detail.deny { border-color: color-mix(in srgb, var(--deny) 45%, transparent); background: var(--deny-bg); }
+.detail.ok { border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+.detail .dh { display: flex; align-items: center; gap: 10px; }
+.detail .dh svg.i { width: 22px; height: 22px; }
+.detail .dh h4 { margin: 0; font-size: 17px; }
+.detail.warn h4 { color: var(--warn); } .detail.deny h4 { color: var(--deny); } .detail.ok h4 { color: var(--ok); }
+.detail .dh time { margin-left: auto; font: 12px var(--mono); color: var(--muted); }
+.detail p { margin: 8px 0 12px; color: var(--ink); font-size: 13.5px; }
+.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 20px; font-size: 13px; margin: 0; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; min-width: 0; }
+.facts dd code { background: color-mix(in srgb, var(--muted) 14%, transparent); padding: 1px 7px; border-radius: 4px; word-break: break-all; }
+.facts dd code.ok { color: var(--ok); background: var(--ok-bg); } .facts dd code.deny { color: var(--deny); background: color-mix(in srgb, var(--deny) 16%, transparent); } .facts dd code.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); }
+.evidence { margin-top: 12px; }
+.evidence > summary { font-size: 12.5px; }
+.evl { margin-top: 8px; border-top: 1px solid var(--line); }
+.evr { display: grid; grid-template-columns: 52px 66px minmax(0, 1fr); gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.evr:last-child { border-bottom: 0; }
+.evr time { font: 11.5px/20px var(--mono); color: var(--faint); text-align: right; }
+.comp { font: 500 11px/20px var(--mono); text-align: center; border-radius: 4px; background: color-mix(in srgb, var(--muted) 14%, transparent); color: var(--muted); height: 20px; }
+.evr .sm { word-break: break-word; }
+.evr.ok .sm { color: var(--ok); } .evr.deny .sm { color: var(--deny); } .evr.error .sm { color: var(--warn); }
+.checks { list-style: none; margin: 4px 0 0; padding: 0; font: 11.5px/1.7 var(--mono); color: var(--muted); }
+.checks .x { color: var(--deny); font-weight: 600; }
+.checks b { color: var(--ok); font-weight: 400; }
 
-/* ---- jira ---- */
+/* tickets */
+.tickets { margin-top: 16px; }
+.tickets .phd { border-bottom: 0; }
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th, td { text-align: left; padding: 7px 16px; border-top: 1px solid var(--line); vertical-align: top; font-size: 13px; }
 th { font-size: 12px; color: var(--muted); font-weight: 500; }
-td pre { margin-top: 4px; }
+td.key { font-weight: 600; white-space: nowrap; }
+td.st { white-space: nowrap; }
+tr.blocked td { color: var(--muted); }
+tr.blocked td.st { color: var(--deny); }
+td details.tk > summary { margin: 0; color: var(--ink); font-size: 13px; }
+td details.tk > summary::before { color: var(--faint); }
+
+@media (max-width: 1100px) {
+  .hero { grid-template-columns: 1fr; gap: 16px; }
+  .main { grid-template-columns: 1fr; }
+  #agentPanel { min-height: 0; }
+  #agentPanel .scroll { position: static; }
+  #agent { position: static; max-height: 70vh; }
+}
+@media (max-width: 640px) {
+  .wrap { padding: 0 16px 24px; }
+  .status .cell { border-right: 0; padding: 4px 10px; }
+  .status .end { margin-left: 0; }
+  .arow { grid-template-columns: 40px 92px minmax(0, 1fr); gap: 6px; }
+  .role { font-size: 9.5px; letter-spacing: 0; }
+  .topbar .sub { display: none; }
+  .hero h2 { font-size: 21px; }
+  th:nth-child(3), td:nth-child(3), th:nth-child(4), td:nth-child(4) { display: none; }
+}
 </style>
 </head>
 <body>
-<header>
-  <div class="titlebar">
+<div class="wrap">
+  <div class="topbar">
     <h1>Agent Credential Broker</h1>
+    <span class="sub">The model emits intent. The harness owns credentials. The broker enforces policy.</span>
     <span class="spacer"></span>
-    <span class="quota" id="runsLeft"></span>
     <button class="btn" id="reset">Reset</button>
   </div>
-  <p class="thesis"><b>The model emits intent. The harness owns credentials. The broker enforces policy.</b>
-    A Claude code reviewer files Jira tickets without ever holding a credential.</p>
-  <div class="scenarios">
-    <button class="scn" data-s="normal"><b>Normal</b><span>Token refreshes silently</span></button>
-    <button class="scn" data-s="expire"><b>Grant expires</b><span>Expires mid-run</span></button>
-    <button class="scn" data-s="revoke"><b>Grant revoked</b><span>User revokes mid-run</span></button>
-    <button class="scn" data-s="stolen"><b>Stolen token</b><span>Another workload replays it</span></button>
+
+  <section class="hero">
+    <div>
+      <h2>An AI agent that files real tickets, with no credentials to leak.</h2>
+      <p>A Claude code reviewer audits a small repo and files Jira tickets. <b>The model never holds a key.</b>
+        Each run gets its own workload identity and a narrow, revocable grant from the user, and a broker checks both before
+        calling Jira with a key only it holds. Pick a scenario to see the grant work, expire, get revoked or get stolen.</p>
+    </div>
+    <div class="runbox">
+      <label class="lbl" for="scnSel">Scenario</label>
+      <div class="select"><select id="scnSel"></select></div>
+      <div class="desc" id="selDesc"></div>
+      <div class="row">
+        <button class="btn primary" id="runBtn">Run scenario</button>
+        <span class="quota" id="runsLeft"></span>
+      </div>
+      <div class="err" id="err" hidden></div>
+    </div>
+  </section>
+
+  <div class="status" id="status"></div>
+
+  <div class="main">
+    <div class="panel" id="agentPanel">
+      <div class="phd"><svg class="i ic" viewBox="0 0 24 24"><use href="#i-chat"/></svg>
+        <div><h3>Agent thoughts &amp; actions</h3><div class="ps">Exactly what is sent to Claude, in order</div></div></div>
+      <div class="scroll"><div id="agent"><div class="empty">Run a scenario to see the agent work.</div></div></div>
+    </div>
+    <div class="col">
+      <div class="panel" id="tlPanel">
+        <div class="phd"><svg class="i ic" viewBox="0 0 24 24"><use href="#i-clock"/></svg>
+          <div><h3>Execution timeline</h3><div class="ps">Key events from this run. Select one for details.</div></div></div>
+        <ol class="tl" id="timeline"></ol>
+      </div>
+      <div class="panel" id="detailPanel">
+        <div class="phd"><svg class="i ic" viewBox="0 0 24 24"><use href="#i-search"/></svg>
+          <div><h3>Selected event</h3></div>
+          <div class="right"><span id="evPos"></span><span class="nav"><button id="prev" aria-label="Previous event">‹</button><button id="next" aria-label="Next event">›</button></span></div></div>
+        <div id="detail"></div>
+      </div>
+    </div>
   </div>
-  <div class="err" id="err" hidden></div>
-  <div class="runbar" id="runbar"><span class="desc muted">Pick a scenario. Each one starts a fresh agent run with its own workload identity.</span></div>
-  <nav>
-    <button class="active" data-tab="run">Run</button>
-    <button data-tab="jira">Jira <span id="jiraCount" class="muted"></span></button>
-  </nav>
-</header>
-<main>
-  <section id="tab-run" class="grid">
-    <div class="panel">
-      <h2>Model context <span class="muted">exactly what is sent to Claude</span><span class="right" id="scan"></span></h2>
-      <div class="body" id="context"><div class="empty">No run yet.</div></div>
-    </div>
-    <div class="panel">
-      <h2>Decision log <span class="muted">what the system enforced</span>
-        <span class="right"><span class="comp user">user</span><span class="comp harness">harness</span><span class="comp grants">grants</span><span class="comp broker">broker</span></span></h2>
-      <div class="body" id="log"><div class="empty">No events yet.</div></div>
-    </div>
-  </section>
-  <section id="tab-jira" hidden>
-    <div class="panel">
-      <h2>ENG project <span class="muted">mock Jira; only the broker holds its API key</span></h2>
-      <div class="body" id="jira"></div>
-    </div>
-  </section>
-</main>
+
+  <div class="panel tickets">
+    <div class="phd"><svg class="i ic" viewBox="0 0 24 24"><use href="#i-file"/></svg>
+      <div><h3>Tickets</h3><div class="ps">Mock Jira, ENG project. Only the broker holds its API key.</div></div>
+      <div class="right" id="ticketNote"></div></div>
+    <div id="tickets"></div>
+  </div>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="m7.5 12.5 3 3 6-6.5" fill="none" stroke="var(--panel)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="m8.5 8.5 7 7m0-7-7 7" stroke="var(--panel)" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M12 7v6" stroke="var(--panel)" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="16.8" r="1.4" fill="var(--panel)"/></symbol>
+  <symbol id="i-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="4 3"/></symbol>
+  <symbol id="i-tick" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></g></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5" stroke-linecap="round"/></g></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></g></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></g></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M12 3 5 6v5c0 4.5 3 8.5 7 10 4-1.5 7-5.5 7-10V6z"/><path d="m9 12 2 2 4-4"/></g></symbol>
+</svg>
+
 <script>
-const DESC = {
-  normal: "The agent reviews a toy repo and files tickets. The harness refreshes its 10-second access token silently; the model never knows.",
-  expire: "The grant is set to expire 6s after the first ticket. The next token refresh is denied, and the model is told only “Grant no longer available.”",
-  revoke: "The user revokes the grant right after the first ticket. The already-issued token stays valid until it expires (at most 10s); revocation is enforced at the next token exchange, which is denied.",
-  stolen: "After the first ticket, a second workload replays this run's access token and delegation ID. Both are rejected: they are bound to this run's identity.",
+const SCENARIOS = {
+  normal: { name: "Normal", short: "Token refresh succeeds",
+    desc: "The agent reviews a toy repo and files tickets. Its 10-second access token is refreshed silently; the model never knows." },
+  expire: { name: "Grant expires", short: "Next refresh denied mid-run",
+    desc: "The grant expires 6s after the first ticket. The next token refresh is denied, and the model is told only “Grant no longer available.”" },
+  revoke: { name: "Grant revoked", short: "Revoked after first ticket",
+    desc: "The user revokes the grant after the first ticket. The token already issued works until it expires (≤10s); the next exchange is denied." },
+  stolen: { name: "Stolen token", short: "Replay fails binding check",
+    desc: "A second workload replays this run's access token and delegation ID. Both are bound to this run's identity, so both are rejected." },
 };
-// Events the scenario injects into the run (the "thing that happens").
-const INJECTED = new Set(["user.revoke", "user.expiry", "scenario"]);
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const hms = (t) => new Date(t).toLocaleTimeString([], { hour12: false });
 // Minimal, escape-first markdown: `code` and **bold** only.
 const md = (s) => esc(s).replace(/`([^`\n]+)`/g, "<code>$1</code>").replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
-let state = null, lastCtx = "", lastLog = "";
+const hms = (t) => new Date(t).toLocaleTimeString([], { hour12: false });
+const icon = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24"><use href="#i-${n}"/></svg>`;
+const ICON = { ok: icon("check", "ok-c"), deny: icon("x", "deny-c"), warn: icon("alert", "warn-c"), info: icon("dot", "muted"), pending: icon("dot", "warn-c") };
 
-document.querySelectorAll("[data-s]").forEach((b) => { b.onclick = () => start(b.dataset.s); b.title = DESC[b.dataset.s]; });
-$("reset").onclick = async () => { await fetch("/api/reset", { method: "POST" }); lastCtx = lastLog = ""; poll(); };
-document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
-  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("active", x === b));
-  $("tab-run").hidden = b.dataset.tab !== "run";
-  $("tab-jira").hidden = b.dataset.tab !== "jira";
-});
+let state = null, chosen = "normal", selected = null, pinned = false, runId, keys = [];
+let lastAgent = "", lastTl = "", lastDetail = "", lastTickets = "";
+
+$("scnSel").innerHTML = Object.entries(SCENARIOS).map(([k, s]) => `<option value="${k}">${s.name}</option>`).join("");
+$("scnSel").onchange = (e) => { chosen = e.target.value; renderChooser(); };
+$("runBtn").onclick = () => start(chosen);
+$("reset").onclick = async () => { await fetch("/api/reset", { method: "POST" }); runId = undefined; poll(); };
+$("prev").onclick = () => step(-1);
+$("next").onclick = () => step(1);
 
 async function start(s) {
   $("err").hidden = true;
   const r = await fetch("/api/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scenario: s }) });
-  if (!r.ok) { const e = await r.json().catch(() => ({})); $("err").textContent = e.detail || e.error || "failed to start"; $("err").hidden = false; }
-  lastCtx = lastLog = "";
+  if (!r.ok) { const e = await r.json().catch(() => ({})); $("err").textContent = e.detail || e.error || "Failed to start"; $("err").hidden = false; }
   poll();
 }
 
 async function poll() {
-  try {
-    const r = await fetch("/api/state");
-    state = await r.json();
-    render();
-  } catch (e) { /* keep polling */ }
+  try { state = await (await fetch("/api/state")).json(); render(); } catch (e) { /* keep polling */ }
 }
 setInterval(poll, 1000);
 poll();
 
+const busy = () => { const r = state?.run; return !!r && (r.status === "starting" || r.status === "running"); };
+const rel = (t, run) => `+${Math.max(0, (new Date(t) - new Date(run.started)) / 1000).toFixed(1)}s`;
+
 function render() {
   const run = state.run;
-  const evs = state.events || [];
-  const busy = run && (run.status === "starting" || run.status === "running");
-  document.querySelectorAll("[data-s]").forEach((b) => { b.disabled = busy; b.classList.toggle("active", !!run && run.scenario === b.dataset.s); });
-  $("runsLeft").textContent = `${state.runs_left} runs left this hour`;
-  renderRunbar(run, evs);
-  renderContext(state.model_context, run);
-  renderLog(evs, run);
-  renderJira(state.tickets || []);
+  if ((run?.id ?? null) !== runId) {
+    runId = run?.id ?? null; selected = null; pinned = false; lastAgent = lastTl = lastDetail = lastTickets = "";
+    if (run) chosen = run.scenario;
+  }
+  keys = run ? buildKeyEvents(state.events || []) : [];
+  if (!pinned || !keys.some((k) => k.id === selected)) selected = defaultSelection(keys);
+  renderChooser();
+  renderStatus(run, state.events || []);
+  renderAgent(state.model_context, run);
+  renderTimeline(run);
+  renderDetail(run);
+  renderTickets(run, state.tickets || []);
 }
 
-function renderRunbar(run, evs) {
-  if (!run) return;
-  const exp = run.delegation_expires_at ? Math.round((new Date(run.delegation_expires_at) - Date.now()) / 1000) : null;
+
+function renderChooser() {
+  $("scnSel").value = chosen;
+  $("selDesc").textContent = SCENARIOS[chosen].desc;
+  const b = busy(), left = state ? state.runs_left : null;
+  $("runBtn").disabled = b || left === 0;
+  $("runBtn").textContent = b ? "Running…" : state?.run?.scenario === chosen ? "Run again" : "Run scenario";
+  $("runsLeft").textContent = left === null ? "" : `${left} run${left === 1 ? "" : "s"} left this hour`;
+}
+
+// ---------- key events: raw decision-log events folded into what a reviewer cares about ----------
+
+const GRANT_STATE = { delegation_expired: "Expired", delegation_revoked: "Revoked" };
+const denyCode = (s) => (s.match(/denied:? \(?(\w+)\)?/) || s.match(/^(\w+) →/) || [])[1];
+
+function buildKeyEvents(evs) {
+  const out = [];
+  let setup = null, ticket = null, refresh = null, replay = null, finish = null, n = 0, seq = 0;
+  const add = (k) => { k.seq = seq++; out.push(k); return k; };
+  const resolve = (k, ts, fields) => { Object.assign(k, fields); k.ts = ts; k.seq = seq++; };
+
+  for (const e of evs) {
+    const s = e.summary;
+    // A replay is the scenario's attack events plus the denials they cause.
+    if (replay && !(e.type === "scenario" || (e.result === "deny" && (e.type === "broker.decision" || e.type === "token.exchange")))) replay = null;
+
+    if (e.type === "run.identity" || e.type === "user.delegate" || (e.type === "run.status" && e.result === "info" && !finish)) {
+      setup ??= add({ kind: "setup", id: "setup", ts: e.ts, title: "Setup", sub: "Identity issued and grant delegated to this run", status: "ok", evs: [] });
+      setup.evs.push(e);
+    } else if (replay) {
+      replay.evs.push(e);
+      replay.codes = [...new Set(replay.evs.filter((x) => x.type !== "scenario").map((x) => denyCode(x.summary)).filter(Boolean))];
+      if (replay.codes.length) replay.sub = `Rejected: ${replay.codes.join(", ")}`;
+    } else if (e.type === "scenario") {
+      replay = add({ kind: "replay", id: "replay", ts: e.ts, title: "Stolen credentials rejected", sub: "Replaying this run's token and delegation ID", status: "deny", evs: [e] });
+    } else if (e.type === "user.revoke") {
+      add({ kind: "revoke", id: "revoke", ts: e.ts, title: "Grant revoked by user", sub: "Issued token stays valid until it expires (≤10s)", status: "warn", evs: [e] });
+    } else if (e.type === "user.expiry") {
+      const at = (s.match(/expires at ([\d:]+)/) || [])[1];
+      add({ kind: "expiry", id: "expiry", ts: e.ts, title: "Grant expiry moved up", sub: at ? `Grant now expires at ${at}` : s, status: "warn", evs: [e], at });
+    } else if (e.type === "model.intent") {
+      const name = (s.match(/“(.*)”/) || [])[1] || s;
+      ticket = add({ kind: "ticket", n: ++n, id: `t${n}`, ts: e.ts, title: `Ticket ${n} in progress`, sub: name, name, status: "pending", evs: [e] });
+    } else if (e.type === "harness.refresh") {
+      refresh = add({ kind: "refresh", id: `r${out.length}`, ts: e.ts, title: "Refreshing access token", sub: "Exchanging the grant for a new 10s token", status: "pending", evs: [e] });
+    } else if (e.type === "token.exchange" && refresh) {
+      refresh.evs.push(e);
+      if (e.result === "ok") resolve(refresh, e.ts, { title: "Access token refreshed", sub: "New 10s token issued. The model never noticed.", status: "ok" });
+      else {
+        const code = denyCode(s);
+        resolve(refresh, e.ts, { code, title: "Token refresh denied", sub: `Grant ${(GRANT_STATE[code] || "unavailable").toLowerCase()}, so no new token can be issued`, status: "warn" });
+      }
+      refresh = null;
+    } else if (e.type === "model.final" || e.type === "run.status") {
+      finish ??= add({ kind: "finish", id: "finish", ts: e.ts, title: "Run finished", sub: "Agent summarized its findings", status: "ok", evs: [] });
+      finish.evs.push(e);
+      resolve(finish, e.ts, e.result === "error" ? { title: "Run failed", sub: s, status: "deny" } : {});
+    } else if (ticket) {
+      ticket.evs.push(e);
+      if (e.type === "broker.decision") {
+        const jira = (s.match(/(ENG-\d+)/) || [])[1];
+        if (e.result === "ok") {
+          const inWindow = /inside revocation window/.test(s);
+          resolve(ticket, e.ts, { jira, inWindow, status: inWindow ? "warn" : "ok", sub: `${jira}: ${ticket.name}`,
+            title: `Ticket ${ticket.n} created${inWindow ? " in revocation window" : ""}` });
+        } else resolve(ticket, e.ts, { title: `Ticket ${ticket.n} denied by broker`, sub: denyCode(s) || s, status: "deny" });
+      } else if ((e.type === "harness.classify" || e.type === "harness.skip") && e.result === "deny") {
+        resolve(ticket, e.ts, { title: `Ticket ${ticket.n} blocked`, sub: "Brokered tools disabled; model told “Grant no longer available”", status: "deny", blocked: true });
+      }
+    } else if (setup) setup.evs.push(e);
+  }
+  // Each key event sits where it resolved: a ticket appears once its outcome is known.
+  return out.sort((a, b) => new Date(a.ts) - new Date(b.ts) || a.seq - b.seq);
+}
+
+// Open on the event that explains the run: the denied refresh, the replay, a blocked ticket, then anything amber.
+function defaultSelection(ks) {
+  const pick = ks.find((k) => k.kind === "refresh" && k.status === "warn") || ks.find((k) => k.kind === "replay")
+    || ks.find((k) => k.status === "deny") || ks.find((k) => k.status === "warn") || ks[ks.length - 1];
+  return pick?.id ?? null;
+}
+function step(d) {
+  const i = keys.findIndex((k) => k.id === selected);
+  const k = keys[Math.min(keys.length - 1, Math.max(0, i + d))];
+  if (k) select(k.id);
+}
+function select(id) {
+  selected = id; pinned = true;
+  renderTimeline(state.run); renderDetail(state.run); highlightAgent();
+  document.querySelector(`#agent .abox[data-key="${id}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+// ---------- status bar ----------
+
+function outcome(run) {
+  if (busy()) return { s: "pending", text: "In progress" };
+  const fin = keys.find((k) => k.kind === "finish");
+  if (fin?.status === "deny") return { s: "deny", text: fin.sub };
+  const denied = keys.find((k) => k.kind === "refresh" && k.status === "warn");
+  if (denied) return { s: "warn", text: `Grant ${(GRANT_STATE[denied.code] || "no longer available").toLowerCase()} mid-run` };
+  if (keys.some((k) => k.kind === "replay")) return { s: "ok", text: "Stolen credentials rejected" };
+  return keys.filter((k) => k.kind === "ticket").every((k) => k.status === "ok") ? { s: "ok", text: "All tickets filed" } : { s: "warn", text: "Some tickets not filed" };
+}
+
+function renderStatus(run, evs) {
+  if (!run) { $("status").innerHTML = `<span class="idle">No run yet. Choose a scenario, then select <b>Run scenario</b>.</span>`; return; }
   const filed = evs.filter((e) => e.type === "ticket.created").length;
   const denied = evs.filter((e) => e.result === "deny" && (e.component === "broker" || e.component === "grants")).length;
-  const cls = { completed: "ok", running: "warn", starting: "warn", failed: "deny", cancelled: "deny" }[run.status] || "";
-  $("runbar").innerHTML = `
-    <span class="desc">${esc(DESC[run.scenario])}</span>
-    <span class="stat ${cls}">${esc(run.status)}</span>
-    <span class="kv">run <code>${esc(run.id)}</code></span>
-    <span class="kv">identity <code>${esc(run.spiffe_id || "…")}</code></span>
-    <span class="kv">delegation <code>${esc(run.delegation_id || "…")}</code>${exp !== null ? `<span>${exp > 0 ? "expires in " + exp + "s" : "expired"}</span>` : ""}${run.revoked_at ? `<span class="tag warn">revoked</span>` : ""}</span>
-    <span class="stats">
-      <span class="stat ${filed ? "ok" : ""}">${filed} ticket${filed === 1 ? "" : "s"} filed</span>
-      <span class="stat ${denied ? "deny" : ""}">${denied} request${denied === 1 ? "" : "s"} denied</span>
-    </span>`;
+  const st = { completed: "ok", failed: "deny", cancelled: "deny" }[run.status] || "pending";
+  const o = outcome(run);
+  const scan = scanContext(state.model_context);
+  $("status").innerHTML = `
+    <span class="cell"><span class="k">Status</span><span class="v ${st}-c">${ICON[st]} ${esc(run.status[0].toUpperCase() + run.status.slice(1))}</span></span>
+    <span class="cell"><span class="k">Tickets filed</span><span class="v">${icon("file", "muted")} ${filed}</span></span>
+    <span class="cell"><span class="k">Requests denied</span><span class="v">${denied ? ICON.deny : ICON.ok} <span class="${denied ? "deny-c" : ""}">${denied}</span></span></span>
+    <span class="cell"><span class="k">Outcome</span><span class="v">${ICON[o.s]} ${esc(o.text)}</span></span>
+    <span class="cell"><span class="k">Run</span><span class="v"><span class="mono">${esc(run.id)}</span></span></span>
+    <span class="end">${scan
+      ? `<span class="badge deny">${icon("x")} Credential-like string in model context: ${esc(scan)}</span>`
+      : `<span class="badge ok" title="Scans everything sent to the model for access tokens, delegation IDs, SPIFFE IDs, private keys and the Jira key">${icon("shield")} No credentials in model context</span>`}</span>`;
 }
-
-// Keep expanded <details>/bodies open across re-renders.
-function keepOpen(el, fn) {
-  const open = new Set([...el.querySelectorAll("[data-k].open, details[data-k][open]")].map((x) => x.dataset.k));
-  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 30;
-  fn();
-  el.querySelectorAll("[data-k]").forEach((x) => { if (open.has(x.dataset.k)) x.tagName === "DETAILS" ? x.open = true : expand(x); });
-  if (atBottom) el.scrollTop = el.scrollHeight;
-}
-
-// Hover a numbered call on either side to highlight its counterpart.
-function link(el) {
-  el.querySelectorAll("[data-call]").forEach((x) => {
-    const n = x.dataset.call, all = () => document.querySelectorAll(`[data-call="${n}"]`);
-    x.onmouseenter = () => all().forEach((y) => y.classList.add("hl"));
-    x.onmouseleave = () => all().forEach((y) => y.classList.remove("hl"));
-  });
-  el.querySelectorAll(".num").forEach((x) => x.onclick = (e) => {
-    e.stopPropagation();
-    const other = [...document.querySelectorAll(`[data-call="${x.closest("[data-call]").dataset.call}"]`)].find((y) => !el.contains(y));
-    other && other.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  });
-}
-
-function expand(x) { x.classList.add("open"); x.querySelector(".text")?.classList.remove("clamp"); x.querySelector(".more")?.remove(); }
 
 // Anything shaped like a credential from this system.
 const CRED_PATTERNS = [/eyJ[\w-]+\.[\w-]+\.[\w-]+/, /dlg_[0-9a-f]+/, /spiffe:\/\//, /PRIVATE KEY/, /jira_[0-9a-f]{8,}/];
+function scanContext(ctx) {
+  if (!ctx) return null;
+  const hit = CRED_PATTERNS.find((p) => p.test(JSON.stringify(ctx)));
+  return hit ? String(hit) : null;
+}
+
+// ---------- agent thoughts & actions ----------
+
 const INJECTION = /^.*AI reviewers?:.*$/im;
 
-function renderContext(ctx, run) {
-  const key = JSON.stringify(ctx);
-  if (key === lastCtx) return;
-  lastCtx = key;
-  if (!ctx) { $("context").innerHTML = `<div class="empty">No run yet.</div>`; $("scan").innerHTML = ""; return; }
-  let visible = "";
-  const parts = [];
-  const turn = (cls, role, meta, body) =>
-    `<div class="turn ${cls}"><div class="hd"><span class="role">${role}</span>${meta.map((m) => `<span class="meta">${m}</span>`).join("")}</div><div class="bd">${body}</div></div>`;
+function renderAgent(ctx, run) {
+  const key = JSON.stringify(ctx) + JSON.stringify(keys.map((k) => [k.id, k.ts]));
+  if (key === lastAgent) return;
+  lastAgent = key;
+  const el = $("agent");
+  if (!ctx || !run) { el.innerHTML = `<div class="empty">Run a scenario to see the agent work.</div>`; return; }
 
-  const sys = (ctx.system || []).map((b) => b.text).join("\n");
-  visible += sys;
-  const tools = JSON.stringify(ctx.tools, null, 2);
-  visible += tools;
-  parts.push(turn("system", "System", [esc(ctx.model || "")],
-    `<p class="prose">${md(sys)}</p>
-     <details data-k="tools"><summary>Tools: ${(ctx.tools || []).map((t) => `<code>${esc(t.name)}</code>`).join(", ")}</summary><pre class="code">${esc(tools)}</pre></details>`));
+  const tickets = keys.filter((k) => k.kind === "ticket");
+  const finalTs = keys.find((k) => k.kind === "finish")?.evs.find((e) => e.type === "model.final")?.ts;
+  const rows = [];
+  const row = (ts, role, label, body, cls = "", key = "") =>
+    rows.push(`<div class="arow"><time>${ts ? rel(ts, run) : ""}</time><span class="role ${role}">${label}</span><div class="abox ${cls} ${key ? "link" : ""}" ${key ? `data-key="${key}"` : ""}>${body}</div></div>`);
 
-  const callNum = {}; // tool_use_id -> call number, matching the harness's model.intent events
+  row(run.started, "system", "System", `<pre>${esc((ctx.system || []).map((b) => b.text).join("\n"))}</pre>
+    <details data-k="tools"><summary>Tools: ${(ctx.tools || []).map((t) => esc(t.name)).join(", ")} · model ${esc(ctx.model || "")}</summary><pre class="code">${esc(JSON.stringify(ctx.tools, null, 2))}</pre></details>`);
+
+  // Blocks carry no timestamps; borrow them from the matching decision-log events.
+  const callNum = {};
   let n = 0;
-  for (const [i, m] of (ctx.messages || []).entries()) {
+  (ctx.messages || []).forEach((m, i) => {
     const content = typeof m.content === "string" ? [{ type: "text", text: m.content }] : m.content;
-    const blocks = content.map((b, j) => {
+    const hasCalls = content.some((b) => b.type === "tool_use");
+    const msgTs = i === 0 ? run.started : m.role === "assistant" ? (hasCalls ? tickets[n]?.evs[0]?.ts : finalTs) : null;
+    content.forEach((b, j) => {
       const k = `${i}.${j}`;
-      if (b.type === "text") {
-        visible += b.text;
-        if (m.role === "user" && b.text.includes("<file path=")) {
-          const files = (b.text.match(/<file path="([^"]+)"/g) || []).map((f) => f.slice(12, -1));
-          const inj = b.text.match(INJECTION);
-          const lead = b.text.slice(0, b.text.indexOf("<file path=")).trim();
-          const hi = esc(b.text).replace(INJECTION, (l) => `<mark class="inject">${l}</mark>`);
-          return `${lead ? `<p class="prose">${esc(lead)}</p>` : ""}
-            <details data-k="${k}"><summary>Repository under review <span class="files">${files.map((f) => `<code>${esc(f)}</code>`).join("")}</span></summary><pre class="code">${hi}</pre></details>
-            ${inj ? `<div class="inject-note">⚠ Contains a prompt injection asking reviewers to paste credentials into tickets. There are none in this context to paste.</div>` : ""}`;
-        }
-        return `<p class="prose">${md(b.text)}</p>`;
-      }
-      if (b.type === "thinking" || b.type === "redacted_thinking") return `<div class="muted"><code>thinking</code> (not returned by the API)</div>`;
-      if (b.type === "tool_use") {
+      if (b.type === "text" && m.role === "user" && b.text.includes("<file path=")) {
+        const files = (b.text.match(/<file path="([^"]+)"/g) || []).map((f) => f.slice(12, -1));
+        const lead = b.text.slice(0, b.text.indexOf("<file path=")).trim();
+        const hi = esc(b.text).replace(INJECTION, (l) => `<mark class="inject">${l}</mark>`);
+        row(msgTs, "user", "User", `<div class="txt prose">${esc(lead)}</div>
+          <div class="files">${files.map((f) => `<code>${icon("file")} ${esc(f)}</code>`).join("")}</div>
+          <details data-k="${k}"><summary>Show repository contents</summary><pre class="code">${hi}</pre></details>`);
+      } else if (b.type === "text") {
+        const long = b.text.length > 280;
+        row(msgTs, m.role === "user" ? "user" : "assistant", m.role === "user" ? "User" : "Assistant",
+          `<div class="txt prose ${long ? "clamp" : ""}" data-k="${k}">${md(b.text)}</div>${long ? `<button class="more">Show more</button>` : ""}`);
+      } else if (b.type === "thinking" || b.type === "redacted_thinking") {
+        row(msgTs, "assistant thinking", "Thinking", `<div class="note">${b.thinking ? esc(b.thinking) : "The model reasoned here. The API returns only a signature, not the content."}</div>`);
+      } else if (b.type === "tool_use") {
         const inp = b.input || {};
-        visible += JSON.stringify(inp);
-        const counted = b.name === "create_ticket" && inp.title;
+        const counted = b.name === "create_ticket" && inp.title; // matches the harness's model.intent events
         if (counted) callNum[b.id] = ++n;
-        const rest = Object.entries(inp).filter(([f]) => f !== "title" && f !== "body");
-        return `<div class="call" ${counted ? `data-call="${n}"` : ""} data-k="${k}">
-          <div class="top">${counted ? `<span class="num" title="Jump to this call in the decision log">${n}</span>` : ""}<span>tool call</span> <code>${esc(b.name)}</code></div>
-          ${inp.title ? `<div class="title">${esc(inp.title)}</div>` : ""}
-          ${inp.body ? `<div class="text clamp">${esc(inp.body)}</div><button class="more">Show full body</button>` : ""}
-          ${rest.length ? `<pre class="code">${esc(JSON.stringify(Object.fromEntries(rest), null, 2))}</pre>` : ""}</div>`;
-      }
-      if (b.type === "tool_result") {
+        row(counted ? tickets[n - 1]?.evs[0]?.ts : msgTs, "action", "Tool action",
+          `<div class="tname">${esc(b.name)}</div>${inp.title ? `<div class="tsub">${esc(inp.title)}</div>` : ""}
+          ${inp.body ? `<details data-k="${k}"><summary>Ticket body</summary><pre class="code">${esc(inp.body)}</pre></details>` : `<pre class="code">${esc(JSON.stringify(inp, null, 2))}</pre>`}`,
+          "", counted ? `t${n}` : "");
+      } else if (b.type === "tool_result") {
         const c = typeof b.content === "string" ? b.content : (b.content || []).map((x) => x.text).join("\n");
-        visible += c;
-        const num = callNum[b.tool_use_id];
+        const tk = tickets[callNum[b.tool_use_id] - 1];
         const ok = !b.is_error && /^Created /.test(c);
-        return `<div class="call ${ok ? "res-ok" : "res-deny"}" ${num ? `data-call="${num}"` : ""}>
-          <div class="top">${num ? `<span class="num" title="Jump to this call in the decision log">${num}</span>` : ""}<span>tool result</span></div>
-          <div class="text">${esc(c)}</div></div>`;
+        const why = !ok && tk?.blocked ? keys.find((x) => x.kind === "refresh" && x.status === "warn") : null;
+        row(tk?.ts, ok ? "result" : "result error", "Tool result",
+          `<div class="res">${ok ? icon("tick", "ok-c") : icon("x", "deny-c")}<span>${esc(c)}</span></div>
+           ${why ? `<div class="note">The harness withholds the reason (${esc(why.code || "grant unavailable")}). The model sees only this message.</div>` : ""}`,
+          ok ? "" : "err", tk?.id);
+      } else {
+        row(msgTs, "system", esc(b.type), "");
       }
-      return `<div class="muted"><code>${esc(b.type)}</code></div>`;
-    }).join("");
-    const kinds = content.map((b) => b.type);
-    const meta = kinds.every((t) => t === "tool_use") ? `${kinds.length} tool call${kinds.length > 1 ? "s" : ""}`
-      : kinds.every((t) => t === "tool_result") ? `${kinds.length} tool result${kinds.length > 1 ? "s" : ""}`
-      : i === ctx.messages.length - 1 && m.role === "assistant" && run && run.final ? "final answer" : "";
-    parts.push(turn(m.role, m.role === "user" ? "User" : "Assistant", [meta], blocks));
-  }
-  const hit = CRED_PATTERNS.find((p) => p.test(visible));
-  $("scan").innerHTML = hit
-    ? `<span class="scan dirty">credential-like string found: ${esc(hit)}</span>`
-    : `<span class="scan clean" title="Scans everything sent to the model for access tokens, delegation IDs, SPIFFE IDs, private keys and the Jira key">✓ no credentials in context</span>`;
-  const el = $("context");
-  keepOpen(el, () => { el.innerHTML = parts.join(""); });
-  el.querySelectorAll(".call .more").forEach((b) => b.onclick = () => expand(b.closest(".call")));
-  link(el);
+    });
+  });
+
+  const open = new Set([...el.querySelectorAll("details[data-k][open], .txt[data-k].open")].map((x) => x.dataset.k));
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 30;
+  el.innerHTML = rows.join("");
+  el.querySelectorAll("[data-k]").forEach((x) => { if (open.has(x.dataset.k)) x.tagName === "DETAILS" ? x.open = true : unclamp(x); });
+  el.querySelectorAll(".more").forEach((b) => b.onclick = () => unclamp(b.previousElementSibling));
+  el.querySelectorAll(".abox.link").forEach((b) => b.onclick = (e) => { if (!e.target.closest("summary, pre, button")) select(b.dataset.key); });
+  if (atBottom) el.scrollTop = el.scrollHeight;
+  highlightAgent();
+}
+function unclamp(x) { x.classList.remove("clamp"); x.classList.add("open"); if (x.nextElementSibling?.classList.contains("more")) x.nextElementSibling.remove(); }
+function highlightAgent() {
+  document.querySelectorAll("#agent .abox").forEach((b) => b.classList.toggle("hl", !!selected && b.dataset.key === selected));
 }
 
-function renderLog(evs, run) {
-  const key = JSON.stringify(evs);
-  if (key === lastLog) return;
-  lastLog = key;
-  if (!evs.length) { $("log").innerHTML = `<div class="empty">No events yet.</div>`; return; }
-  const t0 = new Date(run?.started || evs[0].ts);
-  const rel = (t) => `<time title="${hms(t)}">+${Math.max(0, (new Date(t) - t0) / 1000).toFixed(1)}s</time>`;
+// ---------- timeline ----------
 
-  // Group into setup, one section per tool call, and finish.
-  const groups = [{ name: "Setup", kind: "identity & delegation", evs: [] }];
-  let n = 0;
-  for (const e of evs) {
-    if (e.type === "model.final") { groups.push({ name: "Finish", kind: "", ts: e.ts, evs: [] }); continue; }
-    if (e.type === "model.intent") {
-      const title = (e.summary.match(/“(.*)”/) || [])[1] || e.summary;
-      groups.push({ call: ++n, name: title, kind: "create_ticket", ts: e.ts, evs: [] });
-      continue;
+function renderTimeline(run) {
+  const key = JSON.stringify([keys, selected]);
+  if (key === lastTl) return;
+  lastTl = key;
+  if (!run || !keys.length) { $("timeline").innerHTML = `<div class="empty">${run ? "Starting…" : "No run yet."}</div>`; return; }
+  $("timeline").innerHTML = keys.map((k) => `
+    <li class="${k.status} ${k.id === selected ? "sel" : ""}" data-id="${k.id}">
+      <time>${rel(k.ts, run)}</time><span class="dot ${k.status}"></span>
+      <div><div class="t">${esc(k.title)}</div><div class="s">${esc(k.sub)}</div></div>${ICON[k.status]}</li>`).join("");
+  $("timeline").querySelectorAll("li[data-id]").forEach((li) => li.onclick = () => select(li.dataset.id));
+}
+
+// ---------- selected event ----------
+
+const DESC = {
+  setup: () => "The harness minted a workload identity for this run: an mTLS certificate whose private key only the harness holds. The user then delegated a narrow grant bound to that identity. The model starts with no credentials at all.",
+  ticket: (k) => k.blocked ? "The model asked to file a ticket, but no valid access token could be obtained. The harness disabled brokered tools and told the model only “Grant no longer available.” The model got no error details and no credentials."
+    : k.inWindow ? "The grant was already revoked, but this ticket still went through. The broker verifies tokens offline, so an issued token stays valid until it expires (at most 10s). Revocation takes effect at the next token exchange."
+    : k.status === "deny" ? "The broker rejected this request after verifying identity, token and policy."
+    : k.status === "pending" ? "The model asked to file a ticket. The harness is getting a token and calling the broker."
+    : "The model asked to file a ticket. The harness attached a short-lived access token and called the broker over mTLS. The broker verified identity, token, policy, scope and resource, then filed the ticket with a Jira key only it holds.",
+  refresh: (k) => k.status === "ok" ? "The access token was about to expire, so the harness exchanged the grant for a new one. The model was not involved and never noticed."
+    : k.status === "pending" ? "The harness is exchanging the grant for a new access token."
+    : `The harness tried to exchange the grant for a new access token. Grants refused because the grant is ${(GRANT_STATE[k.code] || "unavailable").toLowerCase()}, so no new token can be issued. The harness then disabled brokered tools.`,
+  revoke: () => "The user revoked the grant after the first ticket. The token already issued keeps working until it expires, because the broker verifies tokens without calling grants. The next token exchange will be denied.",
+  expiry: () => "For this scenario, the grant's expiry is moved to 6 seconds after the first ticket so that it runs out mid-review.",
+  replay: () => "A second workload with its own valid identity replayed this run's access token and delegation ID. Both are bound to this run's identity, so the broker and grants rejected them. The real run was unaffected.",
+  finish: (k) => k.status === "deny" ? "The run ended with an error." : "The model finished and wrote a summary of its findings. The full answer is the last entry in the agent panel.",
+};
+
+function facts(k, run) {
+  const f = [];
+  const find = (t) => k.evs.find((e) => e.type === t);
+  const jti = (s) => (s.match(/jti (\w+)/) || [])[1];
+  const failed = (e) => (e?.checks || []).filter((c) => !c.ok).map((c) => c.name).join(", ");
+  const passed = (e) => `${e.checks.filter((c) => c.ok).length} of ${e.checks.length} passed`;
+  const c = (v, cls = "") => `<code class="${cls}">${esc(v)}</code>`;
+  switch (k.kind) {
+    case "setup": {
+      const m = (find("user.delegate")?.summary || "").match(/^(\S+) delegated (\S+) on (\S+) to/) || [];
+      f.push(["Workload identity", c(run.spiffe_id)]);
+      if (m[1]) f.push(["Delegated by", esc(m[1])], ["Scope", c(m[2])], ["Resource", c(`project ${m[3]}`)]);
+      f.push(["Delegation", c(run.delegation_id)]);
+      const exp = Math.round((new Date(run.delegation_expires_at) - Date.now()) / 1000);
+      f.push(["Grant state", run.revoked_at ? c("Revoked", "warn") : exp > 0 ? `${c("Active", "ok")} expires ${hms(run.delegation_expires_at)} (in ${exp}s)` : c("Expired", "warn")]);
+      const model = (find("run.status")?.summary.match(/\((.+)\)/) || [])[1];
+      if (model) f.push(["Model", c(model)]);
+      f.push(["Credentials given to model", c("None", "ok")]);
+      break;
     }
-    if (e.type === "ticket.created") continue; // the broker's decision row already names the ticket
-    groups[groups.length - 1].evs.push(e);
+    case "ticket": {
+      const tx = find("token.exchange"), bd = find("broker.decision");
+      f.push(["Tool", c("create_ticket")], ["Title", esc(k.name)]);
+      if (tx?.result === "ok") f.push(["Access token", `issued ${c(`jti ${jti(tx.summary)}`)}`]);
+      if (bd?.checks) f.push(["Broker checks", bd.result === "ok" ? c(passed(bd), "ok") : c(`failed: ${failed(bd)}`, "deny")]);
+      if (k.jira) f.push(["Jira ticket", `${c(k.jira, "ok")} filed by ${c("tool-broker")}`]);
+      if (k.inWindow) f.push(["Grant state", `${c("Revoked", "warn")} but this token had not expired`]);
+      if (k.blocked) f.push(["Result", c("Not filed", "deny")], ["Harness action", "Disabled brokered tools"], ["Message to model", c("Grant no longer available")]);
+      break;
+    }
+    case "refresh": {
+      const tx = find("token.exchange");
+      f.push(["Request", `${c("token exchange")} at grants ${c("/token")}`]);
+      if (k.status === "ok") f.push(["Result", `${c("New token", "ok")} jti ${esc(jti(tx.summary))}`], ["Model involvement", "None"]);
+      else if (tx) f.push(["Grant state", c(GRANT_STATE[k.code] || k.code, "warn")], ["Result", c("Denied", "deny")], ["Failed check", c(failed(tx), "deny")]);
+      break;
+    }
+    case "revoke":
+      f.push(["Delegation", c(run.delegation_id)], ["Revoked by", esc(state.subject || "user")], ["Takes effect", "At the next token exchange"], ["Longest window", "One token lifetime (10s)"]);
+      break;
+    case "expiry":
+      f.push(["Delegation", c(run.delegation_id)]);
+      if (k.at) f.push(["New expiry", c(k.at, "warn")]);
+      break;
+    case "replay": {
+      const bd = find("broker.decision"), tx = find("token.exchange");
+      f.push(["Attacker", "A second workload with its own valid mTLS identity"]);
+      if (bd) f.push(["Stolen token → broker", `${c("Denied", "deny")} ${c(denyCode(bd.summary) || "")}`]);
+      if (tx) f.push(["Stolen delegation → grants", `${c("Denied", "deny")} ${c(denyCode(tx.summary) || "")}`]);
+      f.push(["Effect on the real run", "None; it kept working"]);
+      break;
+    }
+    case "finish":
+      f.push(["Final status", c(run.status, k.status)], ["Tickets filed", String(keys.filter((x) => x.kind === "ticket" && x.jira).length)]);
+      break;
   }
-
-  const evRow = (e, i) => {
-    const injected = INJECTED.has(e.type);
-    let sum = esc(e.summary);
-    sum = sum.replace(/ · (inside revocation window[^]*)$/, (_, w) => ` <span class="tag warn">${w}</span>`);
-    const icon = injected ? "" : e.result === "ok" ? `<span class="icon">✓</span> ` : e.result === "deny" ? "✗ " : "";
-    const checks = e.checks || [];
-    const failed = checks.filter((c) => !c.ok).length;
-    const list = checks.map((c) => `<li class="${c.ok ? "v" : "x"}">${c.ok ? "✓" : "✗"} ${esc(c.name)}${c.detail ? ` <span class="muted">${esc(c.detail)}</span>` : ""}</li>`).join("");
-    const det = checks.length ? `<details class="checks" data-k="ck${i}" ${failed ? "open" : ""}><summary>${failed ? `${failed} of ${checks.length} checks failed` : `${checks.length} checks passed`}</summary><ul>${list}</ul></details>` : "";
-    return `<div class="ev ${esc(e.result)} ${injected ? "injected" : ""}">${rel(e.ts)}<span class="comp ${esc(e.component)}">${esc(e.component)}</span>
-      <div class="sum">${injected ? `<span class="tag scn">scenario</span> ` : ""}${icon}${sum}${det}</div></div>`;
-  };
-
-  let i = 0;
-  const html = groups.filter((g) => g.evs.length || g.call).map((g) =>
-    `<div class="group" ${g.call ? `data-call="${g.call}"` : ""}><div class="hd">
-      ${g.call ? `<span class="num" title="Jump to this call in the model context">${g.call}</span>` : ""}
-      <span class="name">${esc(g.name)}</span>${g.kind ? `<span class="kind">${g.call ? "<code>create_ticket</code>" : esc(g.kind)}</span>` : ""}${g.ts ? rel(g.ts) : ""}</div>
-      ${g.evs.map((e) => evRow(e, i++)).join("")}</div>`).join("");
-  const el = $("log");
-  keepOpen(el, () => { el.innerHTML = html; });
-  link(el);
+  return f;
 }
 
-function renderJira(tickets) {
-  $("jiraCount").textContent = tickets.length ? `(${tickets.length})` : "";
-  if (!tickets.length) { $("jira").innerHTML = `<div class="empty">No tickets yet.</div>`; return; }
-  $("jira").innerHTML = `<table><thead><tr><th>Key</th><th>Title</th><th>Reporter</th><th>On behalf of</th><th>Created</th></tr></thead><tbody>${
-    tickets.slice().reverse().map((t) => `<tr><td><b>${esc(t.key)}</b></td><td>${esc(t.title)}<details><summary>body</summary><pre class="code">${esc(t.body)}</pre></details></td>
-      <td><code>${esc(t.reporter)}</code></td><td>${esc(t.on_behalf_of)}</td><td>${hms(t.created)}</td></tr>`).join("")}</tbody></table>`;
+function renderDetail(run) {
+  const i = keys.findIndex((k) => k.id === selected);
+  const k = keys[i];
+  $("evPos").textContent = k ? `Event ${i + 1} of ${keys.length}` : "";
+  $("prev").disabled = !k || i === 0;
+  $("next").disabled = !k || i === keys.length - 1;
+  const key = JSON.stringify([k, k?.kind === "setup" ? Math.round(Date.now() / 1000) : 0]);
+  if (key === lastDetail) return;
+  lastDetail = key;
+  if (!k) { $("detail").innerHTML = `<div class="empty">${run ? "Select an event in the timeline." : "Run a scenario, then select an event to see what was checked."}</div>`; return; }
+  const prev = $("detail").querySelector("details.evidence");
+  const open = prev && prev.dataset.id === k.id && prev.open;
+  const evs = k.evs.map((e) => {
+    const checks = (e.checks || []).map((ch) =>
+      `<li class="${ch.ok ? "" : "x"}">${ch.ok ? "<b>✓</b>" : "✗"} ${esc(ch.name)}${ch.detail ? ` (${esc(ch.detail)})` : ""}</li>`).join("");
+    return `<div class="evr ${esc(e.result)}"><time>${rel(e.ts, run)}</time><span class="comp">${esc(e.component)}</span>
+      <div><div class="sm">${esc(e.summary)}</div>${checks ? `<ul class="checks">${checks}</ul>` : ""}</div></div>`;
+  }).join("");
+  $("detail").innerHTML = `<div class="detail ${k.status === "pending" ? "" : k.status}">
+    <div class="dh">${ICON[k.status]}<h4>${esc(k.title)}</h4><time>${rel(k.ts, run)}</time></div>
+    <p>${esc(DESC[k.kind](k))}</p>
+    <dl class="facts">${facts(k, run).map(([a, b]) => `<dt>${esc(a)}</dt><dd>${b}</dd>`).join("")}</dl>
+    <details class="evidence" data-id="${k.id}" ${open ? "open" : ""}><summary>Raw decision log (${k.evs.length} event${k.evs.length === 1 ? "" : "s"})</summary><div class="evl">${evs}</div></details>
+  </div>`;
+}
+
+// ---------- tickets ----------
+
+function renderTickets(run, tickets) {
+  const mine = run ? tickets.filter((t) => t.run_id === run.id) : tickets;
+  const older = tickets.length - mine.length;
+  $("ticketNote").textContent = older > 0 ? `${older} more from earlier runs` : "";
+  const blocked = keys.filter((k) => k.kind === "ticket" && !k.jira && k.status !== "pending");
+  const key = JSON.stringify([mine, blocked.map((k) => k.id)]);
+  if (key === lastTickets) return;
+  lastTickets = key;
+  if (!mine.length && !blocked.length) { $("tickets").innerHTML = `<div class="empty">${run ? "No tickets filed yet in this run." : "No tickets yet."}</div>`; return; }
+  const rows = mine.map((t) => `<tr><td class="key">${esc(t.key)}</td>
+      <td><details class="tk" data-k="${esc(t.key)}"><summary>${esc(t.title)}</summary><pre class="code">${esc(t.body)}</pre></details></td>
+      <td><code>${esc(t.reporter)}</code></td><td>${esc(t.on_behalf_of)}</td>
+      <td class="st ok-c">${icon("tick")} Created</td></tr>`)
+    .concat(blocked.map((k) => `<tr class="blocked"><td class="key">—</td><td>${esc(k.name)}</td><td>—</td><td>—</td>
+      <td class="st">${icon("x")} Not filed</td></tr>`));
+  const open = new Set([...$("tickets").querySelectorAll("details[open]")].map((d) => d.dataset.k));
+  $("tickets").innerHTML = `<table><thead><tr><th>Key</th><th>Summary</th><th>Filed by</th><th>On behalf of</th><th>Status</th></tr></thead><tbody>${rows.join("")}</tbody></table>`;
+  $("tickets").querySelectorAll("details[data-k]").forEach((d) => d.open = open.has(d.dataset.k));
 }
 </script>
 </body>

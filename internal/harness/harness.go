@@ -278,6 +278,9 @@ func (r *Run) createTicket(ctx context.Context, title, body string) string {
 		r.mu.Unlock()
 	}()
 
+	// One key per intent: every retry of this call carries it, so a retry
+	// after a timeout returns the original ticket instead of a duplicate.
+	idemKey := pki.RandomHex(16)
 	var key, keyTitle string
 	var lastErr error
 	refreshed := false
@@ -296,7 +299,7 @@ func (r *Run) createTicket(ctx context.Context, title, body string) string {
 				Title string `json:"title"`
 			}
 			err = httpx.PostJSON(r.broker, config.BrokerURL+"/v1/tools/ticket.create",
-				map[string]string{"Authorization": "Bearer " + tok},
+				map[string]string{"Authorization": "Bearer " + tok, "Idempotency-Key": idemKey},
 				map[string]string{"project": config.Project, "title": title, "body": body}, &out)
 			key, keyTitle = out.Key, out.Title
 		}

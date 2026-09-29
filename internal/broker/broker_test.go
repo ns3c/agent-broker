@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -87,5 +88,26 @@ func TestAuthorize(t *testing.T) {
 				t.Fatalf("valid request ran %d checks, want 7", len(checks))
 			}
 		})
+	}
+}
+
+func TestCreateIssueNamespacesIdempotencyKey(t *testing.T) {
+	var got string
+	jira := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("Idempotency-Key")
+		w.Write([]byte(`{"key":"ENG-1","title":"t"}`))
+	}))
+	defer jira.Close()
+	old := config.JiraURL
+	config.JiraURL = jira.URL
+	defer func() { config.JiraURL = old }()
+
+	b := &Broker{jira: jira.Client()}
+	c := token.Claims{Sub: "alice@demo", Act: token.Actor{Sub: pki.RunID(config.AgentType, "aaaa")}, Tenant: "t1"}
+	if _, err := b.createIssue(c, ticketRequest{Project: "ENG", Title: "t", idemKey: "k1"}); err != nil {
+		t.Fatal(err)
+	}
+	if got != "aaaa:k1" {
+		t.Fatalf("Idempotency-Key = %q, want %q (namespaced by run)", got, "aaaa:k1")
 	}
 }
