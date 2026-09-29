@@ -111,7 +111,7 @@ func generate(dir string) error {
 		}
 		// Server certs name both the Compose hostname and localhost, so the
 		// same PKI works in containers and under `demo supervise`.
-		cert, err := ca.Issue(pki.ServiceID(svc), key.Public(), 7*24*time.Hour, "localhost", svc)
+		cert, err := ca.Issue(pki.ServiceID(svc), key.Public(), pki.CertLifetime, "localhost", svc)
 		if err != nil {
 			return err
 		}

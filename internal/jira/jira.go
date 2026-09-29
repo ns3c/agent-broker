@@ -23,6 +23,7 @@ type Issue struct {
 	Body       string    `json:"body"`
 	Reporter   string    `json:"reporter"`
 	OnBehalfOf string    `json:"on_behalf_of"`
+	RunID      string    `json:"run_id"`
 	Created    time.Time `json:"created"`
 }
 

@@ -211,6 +211,7 @@ func (b *Broker) createIssue(c token.Claims, req ticketRequest) (issue, error) {
 			"body":         req.Body,
 			"reporter":     "tool-broker",
 			"on_behalf_of": fmt.Sprintf("%s via %s run %s", c.Sub, config.AgentType, runID),
+			"run_id":       runID,
 		}, &out)
 	if err == nil && out.Key == "" {
 		err = errors.New("empty issue key")

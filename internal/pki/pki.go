@@ -27,6 +27,11 @@ import (
 
 const TrustDomain = "demo.local"
 
+// CertLifetime is how long the CA and service certificates last. A year is
+// long for production but right for a demo that must keep working, untended,
+// through a review period.
+const CertLifetime = 365 * 24 * time.Hour
+
 // ServiceID returns the SPIFFE ID of a platform service.
 func ServiceID(name string) string { return "spiffe://" + TrustDomain + "/svc/" + name }
 
@@ -82,7 +87,7 @@ func NewCA() (*CA, error) {
 		SerialNumber:          serial(),
 		Subject:               pkix.Name{CommonName: "demo.local root CA"},
 		NotBefore:             time.Now().Add(-time.Minute),
-		NotAfter:              time.Now().Add(7 * 24 * time.Hour),
+		NotAfter:              time.Now().Add(CertLifetime),
 		IsCA:                  true,
 		BasicConstraintsValid: true,
 		KeyUsage:              x509.KeyUsageCertSign,

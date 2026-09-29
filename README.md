@@ -55,7 +55,7 @@ Revocation and user state are checked when the harness exchanges the delegation 
 
 **An issued access token remains valid until it expires. Revocation is enforced at the next token exchange.**
 
-- **Worst case:** a revoked grant keeps working for at most one token lifetime (10s), plus however long the harness takes to make its next call.
+- **Worst case:** a revoked grant keeps working for at most one token lifetime (10s). After that the token is expired, and the broker rejects it however late the harness tries.
 - **What we get in return:** the broker has no state and no runtime dependency on grants.
 - **Why that's acceptable:** tokens are sender-constrained (bound to the run's mTLS identity), so a leaked token is useless to anyone else during that window.
 - **Clock skew:** the broker allows none, because all services run on one host. Across hosts it would need a small allowance, and that allowance would widen the window.
@@ -113,5 +113,8 @@ This demo does not include:
 - certificate-thumbprint binding (`cnf`)
 - pause and re-consent on expiry
 - a policy engine
+- authenticated decision-log events: services report events to `web` over plain HTTP on the internal network. This affects what the dashboard displays, but grants no authority.
+
+The stolen-token scenario is driven by test-only code in the harness (`simulateTheft`). It deliberately replays a credential under a second identity, and would not exist in a real harness.
 
 See `BUILD_PLAN.md` §11 for the stretch goals.

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -49,6 +50,9 @@ func Main() {
 	node, err := pki.LoadServiceIdentity(config.PKIDir(), "harness")
 	if err != nil {
 		log.Fatal(err)
+	}
+	if os.Getenv("ANTHROPIC_API_KEY") == "" {
+		log.Print("warning: ANTHROPIC_API_KEY is not set; agent runs will fail at the first model call")
 	}
 	h := &Harness{
 		node:   node,
@@ -137,6 +141,12 @@ func (h *Harness) startRun(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
 	run.mu.Lock()
+	if run.cancelled || run.cancel != nil {
+		run.mu.Unlock()
+		cancel()
+		httpx.Fail(w, http.StatusConflict, "run_not_startable", "")
+		return
+	}
 	run.delegationID = req.DelegationID
 	run.cancel = cancel
 	run.mu.Unlock()
@@ -156,6 +166,7 @@ func (h *Harness) cancelRun(w http.ResponseWriter, r *http.Request) {
 	h.mu.Unlock()
 	if ok {
 		run.mu.Lock()
+		run.cancelled = true // a cancel that arrives before start still sticks
 		if run.cancel != nil {
 			run.cancel()
 		}
@@ -177,6 +188,7 @@ type Run struct {
 
 	mu           sync.Mutex
 	cancel       context.CancelFunc
+	cancelled    bool
 	delegationID string
 	token        string
 	tokenExp     time.Time
@@ -271,7 +283,11 @@ func (r *Run) createTicket(ctx context.Context, title, body string) string {
 	refreshed := false
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
-			time.Sleep(time.Duration(attempt) * time.Second)
+			select {
+			case <-time.After(time.Duration(attempt) * time.Second):
+			case <-ctx.Done():
+				return msgUnavailable
+			}
 		}
 		tok, err := r.accessToken(false)
 		if err == nil {
@@ -321,14 +337,17 @@ func (r *Run) createTicket(ctx context.Context, title, body string) string {
 	first := r.tickets == 1
 	r.mu.Unlock()
 	if first && r.Scenario == "stolen" {
-		r.simulateTheft()
+		r.simulateTheft() // TEST-ONLY: see simulateTheft
 	}
 	return fmt.Sprintf("Created %s: %s", key, keyTitle)
 }
 
-// simulateTheft plays a second workload that has somehow obtained this run's
-// access token and delegation ID. It holds a perfectly valid identity of its
-// own — just not the one the grant was bound to. The token never leaves this
+// simulateTheft is TEST-ONLY demo scaffolding for the "stolen" scenario and
+// must not exist in a real harness: it deliberately misuses a credential.
+//
+// It plays a second workload that has somehow obtained this run's access
+// token and delegation ID. It holds a perfectly valid identity of its own —
+// just not the one the grant was bound to. The token never leaves this
 // process; the "thief" is a separate identity inside the harness.
 func (r *Run) simulateTheft() {
 	thiefRun := r.ID + "-x"
@@ -340,7 +359,7 @@ func (r *Run) simulateTheft() {
 	r.mu.Lock()
 	tok, dlg := r.token, r.delegationID
 	r.mu.Unlock()
-	r.emit("scenario", "info", fmt.Sprintf("simulated leak: second workload run/%s replays run/%s's access token and delegation ID", thiefRun, r.ID), nil)
+	r.emit("scenario", "info", fmt.Sprintf("[test-only] simulated leak: second workload run/%s replays run/%s's access token and delegation ID", thiefRun, r.ID), nil)
 
 	broker := thief.Client(pki.ServiceID("broker"))
 	err = httpx.PostJSON(broker, config.BrokerURL+"/v1/tools/ticket.create",

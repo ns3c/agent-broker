@@ -49,7 +49,8 @@ type Service struct {
 
 	mu          sync.Mutex
 	delegations map[string]*Delegation
-	users       map[string]bool // subject -> active
+	users       map[string]bool     // subject -> active
+	issuedRuns  map[string]struct{} // run IDs that already have a certificate
 }
 
 func Main() {
@@ -72,6 +73,7 @@ func Main() {
 		ev:          events.NewEmitter("grants"),
 		delegations: map[string]*Delegation{},
 		users:       map[string]bool{config.Subject: true},
+		issuedRuns:  map[string]struct{}{},
 	}
 	web, harness := pki.ServiceID("web"), pki.ServiceID("harness")
 
@@ -109,6 +111,18 @@ func (s *Service) svid(w http.ResponseWriter, r *http.Request) {
 		httpx.Fail(w, http.StatusBadRequest, "bad_request", "public_key")
 		return
 	}
+	// One certificate per run ID, ever. Otherwise a compromised harness could
+	// mint a second certificate for a live run and ride its tokens.
+	s.mu.Lock()
+	_, dup := s.issuedRuns[req.RunID]
+	if !dup {
+		s.issuedRuns[req.RunID] = struct{}{}
+	}
+	s.mu.Unlock()
+	if dup {
+		httpx.Fail(w, http.StatusConflict, "run_id_already_issued", req.RunID)
+		return
+	}
 	spiffeID := pki.RunID(config.AgentType, req.RunID)
 	cert, err := s.ca.Issue(spiffeID, pub, SVIDTTL)
 	if err != nil {
@@ -140,7 +154,7 @@ func (s *Service) createDelegation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := &Delegation{
-		ID:        "dlg_" + pki.RandomHex(6),
+		ID:        "dlg_" + pki.RandomHex(16),
 		Tenant:    req.Tenant,
 		Subject:   req.Subject,
 		Actor:     req.Actor,

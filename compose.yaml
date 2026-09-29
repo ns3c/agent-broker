@@ -63,7 +63,7 @@ services:
     command: ["harness"]
     environment:
       <<: *env
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in .env}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-opus-5-5}
     networks: [mesh]
     volumes:

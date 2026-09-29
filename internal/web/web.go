@@ -29,9 +29,12 @@ var static embed.FS
 const (
 	delegationTTL    = 10 * time.Minute
 	expireAfterFirst = 6 * time.Second
-	runsPerHour      = 5
-	sessionIdle      = 24 * time.Hour
-	maxSessions      = 1000
+	// The harness gives up on a run after 3 minutes; if no final status has
+	// arrived by this point, it never will.
+	runStaleAfter = 4 * time.Minute
+	runsPerHour   = 5
+	sessionIdle   = 24 * time.Hour
+	maxSessions   = 1000
 )
 
 var scenarios = map[string]bool{"normal": true, "expire": true, "revoke": true, "stolen": true}
@@ -46,7 +49,17 @@ type RunState struct {
 	Started       time.Time `json:"started"`
 	Final         string    `json:"final,omitempty"`
 	RevokedAt     time.Time `json:"revoked_at,omitzero"`
-	triggered     bool
+}
+
+// ticket is a Jira issue as the dashboard sees it.
+type ticket struct {
+	Key        string    `json:"key"`
+	Title      string    `json:"title"`
+	Body       string    `json:"body"`
+	Reporter   string    `json:"reporter"`
+	OnBehalfOf string    `json:"on_behalf_of"`
+	RunID      string    `json:"run_id"`
+	Created    time.Time `json:"created"`
 }
 
 type Session struct {
@@ -196,18 +209,33 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request) {
 			ev.Summary += fmt.Sprintf(" · inside revocation window (revoked %.0fs ago; token not yet expired)",
 				time.Since(sess.Run.RevokedAt).Seconds())
 		}
-	case "ticket.created":
-		if !sess.Run.triggered {
-			sess.Run.triggered = true
-			go s.firstTicketTrigger(sess, *sess.Run)
-		}
 	}
 	ev.Data = nil
 	sess.Events = append(sess.Events, ev)
 }
 
-// firstTicketTrigger fires the revoke/expire scenarios once the agent has
-// demonstrably been working, so they land mid-run regardless of model latency.
+// watchFirstTicket polls Jira, the source of truth, until this run has filed
+// a ticket, then fires the revoke/expire scenario so it lands mid-run
+// regardless of model latency. It does not depend on best-effort events.
+func (s *Server) watchFirstTicket(sess *Session, run RunState) {
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
+	for range tick.C {
+		s.mu.Lock()
+		live := sess.Run != nil && sess.Run.ID == run.ID && (sess.Run.Status == "starting" || sess.Run.Status == "running")
+		s.mu.Unlock()
+		if !live || time.Since(run.Started) > runStaleAfter {
+			return
+		}
+		for _, t := range s.tickets(sess.Tenant) {
+			if t.RunID == run.ID {
+				s.firstTicketTrigger(sess, run)
+				return
+			}
+		}
+	}
+}
+
 func (s *Server) firstTicketTrigger(sess *Session, run RunState) {
 	switch run.Scenario {
 	case "revoke":
@@ -255,13 +283,33 @@ func errSuffix(err error) string {
 
 // ---- API ----
 
-func (s *Server) state(w http.ResponseWriter, r *http.Request, sess *Session) {
-	var tickets []json.RawMessage
-	if resp, err := s.jira.Get(config.JiraURL + "/internal/issues?tenant=" + sess.Tenant); err == nil {
-		_ = json.NewDecoder(resp.Body).Decode(&tickets)
+func (s *Server) tickets(tenant string) []ticket {
+	var out []ticket
+	if resp, err := s.jira.Get(config.JiraURL + "/internal/issues?tenant=" + tenant); err == nil {
+		_ = json.NewDecoder(resp.Body).Decode(&out)
 		resp.Body.Close()
 	}
+	return out
+}
+
+// markStaleLocked fails a run whose final status never arrived (harness
+// restarted, event lost) so the session can't sit in "running" forever.
+func markStaleLocked(sess *Session) {
+	r := sess.Run
+	if r == nil || (r.Status != "starting" && r.Status != "running") || time.Since(r.Started) < runStaleAfter {
+		return
+	}
+	r.Status = "failed"
+	sess.Events = append(sess.Events, events.Event{
+		Tenant: sess.Tenant, RunID: r.ID, TS: time.Now(), Component: "web", Type: "run.status", Result: "error",
+		Summary: fmt.Sprintf("no final status within %s; run marked failed", runStaleAfter),
+	})
+}
+
+func (s *Server) state(w http.ResponseWriter, r *http.Request, sess *Session) {
+	tickets := s.tickets(sess.Tenant)
 	s.mu.Lock()
+	markStaleLocked(sess)
 	evs := append([]events.Event{}, sess.Events...)
 	var run *RunState
 	if sess.Run != nil {
@@ -299,6 +347,7 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request, sess *Session)
 	runID := pki.RandomHex(4)
 
 	s.mu.Lock()
+	markStaleLocked(sess)
 	if sess.Run != nil && (sess.Run.Status == "starting" || sess.Run.Status == "running") {
 		s.mu.Unlock()
 		httpx.Fail(w, http.StatusConflict, "run_in_progress", "wait for the current run to finish or reset")
@@ -334,13 +383,20 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request, sess *Session)
 		httpx.Fail(w, http.StatusBadGateway, "start_failed", step)
 	}
 
-	// 1. Harness mints a run-scoped workload identity.
+	// 1. Harness mints a run-scoped workload identity. Web chose the run ID,
+	//    so it derives the identity to delegate to itself rather than
+	//    trusting the harness to report it.
+	actor := pki.RunID(config.AgentType, runID)
 	var created struct {
 		SpiffeID string `json:"spiffe_id"`
 	}
 	if err := httpx.PostJSON(s.harness, config.HarnessURL+"/runs", nil,
 		map[string]string{"tenant": tenant, "run_id": runID, "scenario": req.Scenario}, &created); err != nil {
 		fail("create run", err)
+		return
+	}
+	if created.SpiffeID != actor {
+		fail("create run", fmt.Errorf("harness reported identity %q, expected %q", created.SpiffeID, actor))
 		return
 	}
 
@@ -350,7 +406,7 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request, sess *Session)
 		ExpiresAt time.Time `json:"expires_at"`
 	}
 	if err := httpx.PostJSON(s.grants, config.GrantsURL+"/delegations", nil, map[string]any{
-		"tenant": tenant, "subject": config.Subject, "actor": created.SpiffeID,
+		"tenant": tenant, "subject": config.Subject, "actor": actor,
 		"scope": []string{"ticket:create"}, "project": config.Project, "ttl_seconds": int(delegationTTL.Seconds()),
 	}, &dlg); err != nil {
 		fail("create delegation", err)
@@ -358,9 +414,20 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request, sess *Session)
 	}
 	s.mu.Lock()
 	if sess.Run != nil && sess.Run.ID == runID {
-		sess.Run.SpiffeID, sess.Run.DelegationID, sess.Run.DelegationExp = created.SpiffeID, dlg.ID, dlg.ExpiresAt
+		sess.Run.SpiffeID, sess.Run.DelegationID, sess.Run.DelegationExp = actor, dlg.ID, dlg.ExpiresAt
+	}
+	current := sess.Run != nil && sess.Run.ID == runID
+	var snap RunState
+	if current {
+		snap = *sess.Run
 	}
 	s.mu.Unlock()
+	if !current {
+		// Reset landed while we were starting: don't launch an orphaned run.
+		_ = httpx.PostJSON(s.harness, config.HarnessURL+"/runs/"+runID+"/cancel", nil, struct{}{}, nil)
+		httpx.Fail(w, http.StatusConflict, "reset_during_start", "")
+		return
+	}
 	s.localEvent(sess, runID, "user.delegate", "info", fmt.Sprintf("%s delegated ticket:create on %s to run/%s as %s (expires %s)",
 		config.Subject, config.Project, runID, dlg.ID, dlg.ExpiresAt.Format("15:04:05")))
 
@@ -369,6 +436,9 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request, sess *Session)
 		map[string]string{"delegation_id": dlg.ID}, nil); err != nil {
 		fail("start run", err)
 		return
+	}
+	if req.Scenario == "revoke" || req.Scenario == "expire" {
+		go s.watchFirstTicket(sess, snap)
 	}
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]string{"run_id": runID})
 }
